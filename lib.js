@@ -132,7 +132,7 @@ var miscTranslations = {
 	"camera-tip-camlink": "<i>Tip:</i> A Cam Link may glitch green/purple if accessed elsewhere while already in use.",
 	"samsung-a-series": "Samsung A-series phones may have issues with Chrome; if so, try Firefox Mobile instead or switch video codecs.",
 	"screen-permissions-denied": "Permission to capture denied. Ensure your browser has screen record system permissions\n\n1.On your Mac, choose Apple menu  > System Preferences, click Security & Privacy , then click Privacy.\n2.Select Screen Recording.\n3.Select the checkbox next to your browser to allow it to record your screen.",
-	"change-audio-output-device": "Audio could not be captured. Please make sure you have an audio output device available.\n\nSome gaming headsets (ie: Corsair) may need to be set to 2-channel output to work, as surround sound drivers may cause problems.",
+	"change-audio-output-device": "Audio could not be captured. Please make sure you have an audio output device available.\n\nSome gaming headsets (ie: Logitech/Corsair) may need to be set to 2-channel output to work, as <a target='_blank' href='https://docs.vdo.ninja/common-errors-and-known-issues/surround-sound-error-when-screen-sharing-with-usb-headset'>surround sound drivers may cause problems</a>.\n\nPlease double check your audio settings if using a gaming headset to ensure spatial/DTS/surround audio is not in use. Disabling 'Audio enhancements' in Windows audio settings may also help resolve issues.\n\nIf issues persist, physically unplugging the existing audio device and using another may help as well.\n\nProfessional devices and audiophile-grade audio devices may also cause problems; multi-channel, DSD, 32-bit bit depth, and very high sample rates may cause issues.",
 	"prompt-access-request": " is trying to view your stream. Allow them?",
 	"confirm-reload-user": "Are you sure you wish to reload this user's browser?",
 	"webrtc-is-blocked": "⚠ This browser has either blocked WebRTC or does not support it.\n\nThis site will not work without it.\n\nDisable any browser extensions or privacy settings that may be blocking WebRTC, or try a different browser.",
@@ -281,7 +281,9 @@ if (session.decrypted) {
 	//session.decrypted = true;
 } else if (urlEdited !== window.location.search) {
 	warnlog(window.location.search + " changed to " + urlEdited);
-	window.history.pushState({ path: urlEdited.toString() }, "", urlEdited.toString());
+	if (!session.nohistory){
+		window.history.pushState({ path: urlEdited.toString() }, "", urlEdited.toString());
+	}
 }
 delete urlEdited;
 
@@ -363,7 +365,9 @@ function updateURL(param, force = false, cleanUrl = false) {
 				href = changeParam(cleanUrl, para[0], para[1]);
 			}
 			log("--" + href.toString());
-			window.history.pushState({ path: href.toString() }, "", href.toString());
+			if (!session.nohistory){
+				window.history.pushState({ path: href.toString() }, "", href.toString());
+			}
 		}
 	} else if (!urlParams.has(para[0])) {
 		// don't need to replace as it doesn't exist.
@@ -377,8 +381,9 @@ function updateURL(param, force = false, cleanUrl = false) {
 			} else {
 				newurl = href + "?" + param;
 			}
-
-			window.history.pushState({ path: newurl.toString() }, "", newurl.toString());
+			if (!session.nohistory){
+				window.history.pushState({ path: newurl.toString() }, "", newurl.toString());
+			}
 		}
 	} else if (force) {
 		if (history.pushState) {
@@ -389,7 +394,9 @@ function updateURL(param, force = false, cleanUrl = false) {
 				href = changeParam(window.location.href, para[0], para[1]);
 			}
 			log("---" + href.toString());
-			window.history.pushState({ path: href.toString() }, "", href.toString());
+			if (!session.nohistory){
+				window.history.pushState({ path: href.toString() }, "", href.toString());
+			}
 		}
 	}
 	if (session.sticky) {
@@ -2673,8 +2680,10 @@ function manageSceneState(data, UUID) {
 				session.optimizeBitrate(UUID); // &optimize flag; sets video bitrate to target value if this flag == HIDDEN (if optimize=0, disables both audio and video)
 			}
 			if ("details" in data.obsState) {
-				processNeeded = true;
-				session.pcs[UUID].obsState.details = data.obsState.details;
+				//if (Object.keys(data.obsState.details).length){
+					processNeeded = true;
+					session.pcs[UUID].obsState.details = data.obsState.details;
+				//}
 			}
 			if ("streaming" in data.obsState) {
 				processNeeded = true;
@@ -3688,6 +3697,7 @@ function play(streamid = null, UUID = false) {
 								if (session.directorList.indexOf(UUID) >= 0) {
 									warnlog("stream ID added to badStreamList: " + streamid);
 									session.badStreamList.push(streamid);
+									// if I uncomment this, the director can mute the solo link.
 									// session.watchStream(streamid); // changed June 4th 2024. We shouldn't be viewing the stream if on the bad list, no?
 								}
 							}
@@ -3770,7 +3780,7 @@ function updateQueue(adding = false) {
 }
 
 function hideStreamLowBandwidth(bandwidth, UUID) {
-	if (!session.lowBitrateCutoff) {
+	if (session.lowBitrateCutoff===false) { // allow 0,but I should probably also do this if there is a disconnect.
 		return;
 	}
 
@@ -3783,6 +3793,8 @@ function hideStreamLowBandwidth(bandwidth, UUID) {
 	}
 
 	if (bandwidth <= session.lowBitrateCutoff) {
+		//log("bandwidth <= session.lowBitrateCutoff");
+		log("actual bandwidth: "+ bandwidth+ " < bandwidth cut threshold: " +session.lowBitrateCutoff);
 		// <= used so 0 can be used as a trigger
 		if (session.lowBitrateSceneChange) {
 			changeSceneLowBandwidth(true);
@@ -3791,6 +3803,7 @@ function hideStreamLowBandwidth(bandwidth, UUID) {
 			updateMixer();
 		}
 	} else if (session.lowBitrateSceneChange) {
+		log("changeSceneLowBandwidth(false)");
 		changeSceneLowBandwidth(false);
 	} else if (session.rpcs[UUID].bandwidthMuted) {
 		session.rpcs[UUID].bandwidthMuted = false;
@@ -3812,6 +3825,7 @@ function changeSceneLowBandwidth(state) {
 	}
 	try {
 		if (session.obsState.sourceActive && session.obsState.details && session.obsState.details.currentScene) {
+			
 			changeSceneLowBandwidthRevert = session.obsState.details.currentScene.name || false;
 		} else if ("sourceActive" in session.obsState && !session.obsState.sourceActive && session.obsState.details && session.obsState.details.currentScene) {
 			if (session.obsState.details.currentScene.name !== session.lowBitrateSceneChange) {
@@ -3824,10 +3838,16 @@ function changeSceneLowBandwidth(state) {
 		if (state && changeSceneLowBandwidthRevert) {
 			if (changeSceneEnabled) {
 				// bitrate was higher , so we can now cut off.
+				//log("2 changeSceneEnabled: "+session.lowBitrateSceneChange+" changeSceneEnabled:"+changeSceneEnabled);
+				log("Changing to cut scene due to low bandwidth");
 				window.obsstudio["setCurrentScene"](session.lowBitrateSceneChange);
+			} else {
+				log("Low bandwidth, but not changing scenes because threshold not hit at least once yet");
 			}
-		} else if (changeSceneLowBandwidthRevert) {
+		} else if (changeSceneLowBandwidthRevert) { 
 			changeSceneEnabled = true;
+			//log("1 setCurrentScene: "+changeSceneLowBandwidthRevert+" changeSceneEnabled:"+changeSceneEnabled);
+			log("Reverting to original scene due to good bandwidth");
 			window.obsstudio["setCurrentScene"](changeSceneLowBandwidthRevert);
 		}
 	} catch (e) {
@@ -4193,8 +4213,10 @@ function setupIncomingScreenTracking(v, UUID) {
 		if (session.customWSS || session.wssSetViaUrl){
 			if (session.customWSS && (session.customWSS!==true)){
 				wss = "&pie="+session.customWSS;
+			} else if (session.customWSS==true){
+				wss = "&wss=" + session.wss;
 			} else {
-				wss = "&wss="+session.wss;
+				wss = "&wss2=" + session.wss;
 			}
 		} */
 		/* 
@@ -5009,16 +5031,24 @@ function updateMixerRun(e = false) {
 						widget.id = "widget";
 						widget.setAttribute("allowtransparency", "true");
 						widget.src = parseURL4Iframe(session.widget);
-						log(widget.src);
+						//log(widget.src);
 						document.body.appendChild(widget);
-						playarea.style.left = "0";
-						playarea.style.width = "75%";
+						if (session.widgetleft){
+							widget.classList.add("left");
+							playarea.style.left = "25%";
+							playarea.style.width = "75%";
+						} else {
+							playarea.style.left = "0";
+							playarea.style.width = "75%";
+						}
 					}
 					widget.style.height = "calc(100% - " + hi + "px)";
 					widget.style.top = hi;
 				} catch (e) {
 					errorlog(e);
 				}
+			} else if (!session.widget && session.widgetleft){
+				playarea.style.left = "0";
 			}
 
 			var h = document.body.clientWidth - hi;
@@ -5046,16 +5076,26 @@ function updateMixerRun(e = false) {
 						widget.id = "widget";
 						widget.setAttribute("allowtransparency", "true");
 						widget.src = parseURL4Iframe(session.widget);
-						log(widget.src);
+						//log(widget.src);
 						document.body.appendChild(widget);
-						playarea.style.left = "0";
-						playarea.style.width = "75%";
+						
+						if (session.widgetleft){
+							widget.classList.add("left");
+							playarea.style.left = "25%";
+							playarea.style.width = "75%";
+							playarea.style.position = "absolute";
+						} else {
+							playarea.style.left = "0";
+							playarea.style.width = "75%";
+						}
 					}
 					widget.style.height = "calc(100% - " + hi + "px)";
 					widget.style.top = hi;
 				} catch (e) {
 					errorlog(e);
 				}
+			} else if (!session.widget && session.widgetleft){
+				playarea.style.left = "0";
 			}
 
 			var h = window.innerHeight - hi;
@@ -5152,7 +5192,7 @@ function updateMixerRun(e = false) {
 
 		var miniPreview = session.minipreview;
 
-		if (miniPreview && session.layout && session.streamID && session.streamID in session.layout) {
+		if (miniPreview && (!session.activeSpeaker && session.layout) && session.streamID && session.streamID in session.layout) {
 			miniPreview = false;
 			if (session.videoElement.container && session.videoElement.container.id == "minipreview") {
 				delete session.videoElement.container;
@@ -5401,7 +5441,7 @@ function updateMixerRun(e = false) {
 			}
 
 			if (session.broadcast !== false) {
-				if (session.layout && session.streamID in session.layout) {
+				if ((!session.activeSpeaker && session.layout) && session.streamID in session.layout) {
 					// skip
 				} else {
 					if (roomQuality > 0) {
@@ -5872,7 +5912,7 @@ function updateMixerRun(e = false) {
 			mediaPool[m].alreadyAdded = false;
 		}
 
-		if (!session.layout) {
+		if (!session.layout || session.activeSpeaker) {
 			if (session.orderby) {
 				if (session.orderby == "id") {
 					mediaPool.sort(compare_vids_sid);
@@ -6006,7 +6046,7 @@ function updateMixerRun(e = false) {
 
 	if (!session.notifyScreenShare && session.scene !== false) {
 		// this is a scene, so lets assume &smallshare will disable larger screen shares since there is no one to screen share.
-	} else if (sssid && !session.layout) {
+	} else if (sssid && (!session.layout || session.activeSpeaker)) {
 		customLayout = {};
 
 		if (mediaPool.length >= 12) {
@@ -6128,7 +6168,7 @@ function updateMixerRun(e = false) {
 				} else if (childNodes[n].querySelector("iframe")) {
 					var iftemp = childNodes[n].querySelector("iframe");
 					if (iftemp.framesource) {
-						if (session.layout && session.layout[""]) {
+						if ((!session.activeSpeaker && session.layout) && session.layout[""]) {
 							for (var i = 0; i < session.layout[""].length; i++) {
 								if (session.layout[""][i].iframeSrc && session.layout[""][i].iframeSrc == iftemp.framesource) {
 									childNodes[n].matched = true;
@@ -6180,7 +6220,7 @@ function updateMixerRun(e = false) {
 					if (mpl === 0 && miniPreview === 2) {
 						if (soloVideo !== true) {
 							//  since miniPreview==2, we want to full screen our preview.  Deleting the old mini preview container will ensure it loads right.
-							if (!session.layout) {
+							if (!session.layout || session.activeSpeaker) {
 								if (session.videoElement.container && session.videoElement.container.id == "minipreview") {
 									delete session.videoElement.container;
 								}
@@ -6392,7 +6432,7 @@ function updateMixerRun(e = false) {
 	}
 
 	var layout = false;
-	if (customLayout || session.layout) {
+	if (customLayout || (!session.activeSpeaker && session.layout)) {
 		layout = session.layout || customLayout;
 		layout = { ...layout };
 		if (layout[""]) {
@@ -8274,6 +8314,78 @@ session.remoteFocus = async function (focusDistance) {
 		errorlog(e);
 	}
 };
+
+function isolateIncomingChannel(channel, UUID) {
+    if (!session.rpcs[UUID]) return;
+
+    if (channel === 0 || channel === false) {
+        delete session.rpcs[UUID].isolatedChannel;
+    } else {
+        session.rpcs[UUID].isolatedChannel = channel || session.rpcs[UUID].isolatedChannel;
+    }
+    updateIncomingAudioElement(UUID);
+}
+
+function isolateChannel(source, channel) {
+    if (!channel || channel === 0) {
+        return source; // No isolation, return the original source
+    }
+	
+    const splitter = session.audioCtx.createChannelSplitter(6); // Assuming max 6 channels
+    const merger = session.audioCtx.createChannelMerger(1); // Mono output
+
+    source.connect(splitter);
+    splitter.connect(merger, channel - 1, 0); // Connect the specified channel to the mono output
+
+    return merger;
+}
+
+function directIsolateChannel(UUID, channel=null){ // isolateChannel()
+	try {
+		if (UUID){
+			
+			var targets = document.querySelectorAll("[data--u-u-i-d='" + UUID + "'][data-action-type='isolate-channel']");
+			var add = false;
+			
+			if (channel){
+				add = true;
+			}
+			targets.forEach(ele=>{
+				if (channel && parseInt(ele.dataset.channel) && (parseInt(ele.dataset.channel) == channel)){
+					
+					if (ele.classList.contains("pressed")){
+						add = false;
+						ele.classList.remove("pressed");
+						ele.ariaPressed = "false";
+						
+					} else {
+						ele.classList.add("pressed");
+						ele.ariaPressed = "true";
+					}
+				} else {
+					ele.classList.remove("pressed");
+					ele.ariaPressed = "false";
+				}
+			});
+			
+			
+			var msg = {};
+			
+			if (add){
+				msg.isolateChannel = channel
+			} else {
+				msg.isolateChannel = false;
+			}
+			session.sendMessage(msg, UUID);
+			
+			
+			
+		}
+	} catch (e) {
+		errorlog(e);
+	}
+}
+
 session.remotePan = function (pan) {
 	try {
 		var track0 = session.streamSrc.getVideoTracks();
@@ -8521,211 +8633,931 @@ function setAvatarImage(tracks) {
 
 var drawOnScreenObject = null;
 function drawOnScreen() {
-	var canvas = document.getElementById("drawOnSCreen");
-	if (!canvas) {
-		canvas = document.createElement("canvas");
-		getById("gridlayout").appendChild(canvas);
-		getById("gridlayout").style.position = "relative";
-	} else {
-		return;
-	}
+    var canvas = document.getElementById("drawOnScreen");
+    if (!canvas) {
+        canvas = document.createElement("canvas");
+        document.getElementById("gridlayout").appendChild(canvas);
+        document.getElementById("gridlayout").style.position = "relative";
+    } else {
+        return;
+    }
 
-	var ctx = canvas.getContext("2d");
-	canvas.width = parseInt(getById("gridlayout").clientWidth / 2);
-	canvas.height = parseInt(getById("gridlayout").clientHeight / 2);
-	canvas.style.width = "100%";
-	canvas.style.height = "100%";
-	canvas.style.display = "block";
-	canvas.style.position = "absolute";
-	canvas.style.bottom = "0";
-	canvas.style.left = "0";
+    var ctx = canvas.getContext("2d");
+    canvas.width = parseInt(document.getElementById("gridlayout").clientWidth / 2);
+    canvas.height = parseInt(document.getElementById("gridlayout").clientHeight / 2);
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.display = "block";
+    canvas.style.position = "absolute";
+    canvas.style.bottom = "0";
+    canvas.style.left = "0";
 
-	var flag = false,
-		prevX = 0,
-		currX = 0,
-		prevY = 0,
-		currY = 0,
-		dot_flag = false;
+    var flag = false,
+        prevX = 0,
+        currX = 0,
+        prevY = 0,
+        currY = 0,
+        dot_flag = false;
 
-	var x = "black",
-		y = 2;
+    var x = "black",
+        y = 2;
 
-	var object = {};
+    var object = {};
 
-	object.stop = function stop() {
-		canvas.removeEventListener(
-			"mousemove",
-			function (e) {
-				findxy("move", e);
-			},
-			false
-		);
-		canvas.removeEventListener(
-			"mousedown",
-			function (e) {
-				findxy("down", e);
-			},
-			false
-		);
-		canvas.removeEventListener(
-			"mouseup",
-			function (e) {
-				findxy("up", e);
-			},
-			false
-		);
-		canvas.removeEventListener(
-			"mouseout",
-			function (e) {
-				findxy("out", e);
-			},
-			false
-		);
-		canvas.remove();
+    function findxy(res, e) {
+        if (res == "down") {
+            prevX = currX;
+            prevY = currY;
+            currX = e.clientX - canvas.offsetLeft;
+            currY = e.clientY - canvas.offsetTop;
 
-		getById("startDrawScreen").classList.remove("hidden");
+            flag = true;
+            dot_flag = true;
+            if (dot_flag) {
+                ctx.beginPath();
+                ctx.fillStyle = x;
+                ctx.fillRect(currX, currY, 2, 2);
+                ctx.closePath();
+                dot_flag = false;
+            }
+        }
+        if (res == "up" || res == "out") {
+            flag = false;
+        }
+        if (res == "move") {
+            if (flag) {
+                prevX = currX;
+                prevY = currY;
+                currX = e.clientX - canvas.offsetLeft;
+                currY = e.clientY - canvas.offsetTop;
+                draw();
+            }
+        }
+    }
 
-		document.querySelectorAll(".drawActive").forEach(ele => {
-			ele.classList.add("hidden");
-		});
+    function draw() {
+        ctx.beginPath();
 
-		delete canvas;
-		drawOnScreenObject = null;
-		object = null;
-	};
+        var mx = canvas.width / parseInt(document.getElementById("gridlayout").clientWidth);
+        var my = canvas.height / parseInt(document.getElementById("gridlayout").clientHeight);
+        var mo = parseInt(document.getElementById("header").clientHeight);
 
-	object.init = function init() {
-		//console.log("init");
-		canvas.addEventListener(
-			"mousemove",
-			function (e) {
-				findxy("move", e);
-			},
-			false
-		);
-		canvas.addEventListener(
-			"mousedown",
-			function (e) {
-				findxy("down", e);
-			},
-			false
-		);
-		canvas.addEventListener(
-			"mouseup",
-			function (e) {
-				findxy("up", e);
-			},
-			false
-		);
-		canvas.addEventListener(
-			"mouseout",
-			function (e) {
-				findxy("out", e);
-			},
-			false
-		);
+        ctx.moveTo(prevX * mx, prevY * my - mo * my);
+        ctx.lineTo(currX * mx, currY * my - mo * my);
+        ctx.strokeStyle = x;
+        ctx.lineWidth = y;
+        ctx.stroke();
+        ctx.closePath();
+    }
 
-		getById("startDrawScreen").classList.add("hidden");
+    function onMouseMove(e) {
+        findxy("move", e);
+    }
 
-		document.querySelectorAll(".drawActive").forEach(ele => {
-			ele.classList.remove("hidden");
-		});
-	};
+    function onMouseDown(e) {
+        findxy("down", e);
+    }
 
-	object.color = function color(obj) {
-		switch (obj.dataset.color) {
-			case "green":
-				x = "green";
-				break;
-			case "blue":
-				x = "blue";
-				break;
-			case "red":
-				x = "red";
-				break;
-			case "yellow":
-				x = "yellow";
-				break;
-			case "orange":
-				x = "orange";
-				break;
-			case "black":
-				x = "black";
-				break;
-			case "white":
-				x = "white";
-				break;
-		}
-		if (x == "white") y = 14;
-		else y = 2;
-	};
+    function onMouseUp(e) {
+        findxy("up", e);
+    }
 
-	function draw() {
-		//console.log('draw',prevX,currX);
-		ctx.beginPath();
+    function onMouseOut(e) {
+        findxy("out", e);
+    }
 
-		var mx = canvas.width / parseInt(getById("gridlayout").clientWidth);
-		var my = canvas.height / parseInt(getById("gridlayout").clientHeight);
-		var mo = parseInt(getById("header").clientHeight);
+    object.stop = function stop() {
+        canvas.removeEventListener("mousemove", onMouseMove, false);
+        canvas.removeEventListener("mousedown", onMouseDown, false);
+        canvas.removeEventListener("mouseup", onMouseUp, false);
+        canvas.removeEventListener("mouseout", onMouseOut, false);
+        canvas.remove();
 
-		ctx.moveTo(prevX * mx, prevY * my - mo * my);
-		ctx.lineTo(currX * mx, currY * my - mo * my);
-		ctx.strokeStyle = x;
-		ctx.lineWidth = y;
-		ctx.stroke();
-		ctx.closePath();
-	}
+        document.getElementById("startDrawScreen").classList.remove("hidden");
 
-	object.erase = function erase() {
-		//var m = confirm("Want to clear");
-		// if (m) {
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		//document.getElementById("canvasimg").style.display = "none";
-		// }
-	};
+        document.querySelectorAll(".drawActive").forEach(ele => {
+            ele.classList.add("hidden");
+        });
 
-	object.save = function save() {
-		//document.getElementById("canvasimg").style.border = "2px solid";
-		var dataURL = canvas.toDataURL();
-		// document.getElementById("canvasimg").src = dataURL;
-		// document.getElementById("canvasimg").style.display = "inline";
-	};
+        drawOnScreenObject = null;
+    };
 
-	function findxy(res, e) {
-		//console.log(res,e);
-		if (res == "down") {
-			prevX = currX;
-			prevY = currY;
-			currX = e.clientX - canvas.offsetLeft;
-			currY = e.clientY - canvas.offsetTop;
+    object.init = function init() {
+        canvas.addEventListener("mousemove", onMouseMove, false);
+        canvas.addEventListener("mousedown", onMouseDown, false);
+        canvas.addEventListener("mouseup", onMouseUp, false);
+        canvas.addEventListener("mouseout", onMouseOut, false);
 
-			flag = true;
-			dot_flag = true;
-			if (dot_flag) {
-				ctx.beginPath();
-				ctx.fillStyle = x;
-				ctx.fillRect(currX, currY, 2, 2);
-				ctx.closePath();
-				dot_flag = false;
-			}
-		}
-		if (res == "up" || res == "out") {
-			flag = false;
-		}
-		if (res == "move") {
-			if (flag) {
-				prevX = currX;
-				prevY = currY;
-				currX = e.clientX - canvas.offsetLeft;
-				currY = e.clientY - canvas.offsetTop;
-				draw();
-			}
-		}
-	}
-	object.init();
-	drawOnScreenObject = object;
-	return object;
+        document.getElementById("startDrawScreen").classList.add("hidden");
+
+        document.querySelectorAll(".drawActive").forEach(ele => {
+            ele.classList.remove("hidden");
+        });
+    };
+
+    object.color = function color(obj) {
+        switch (obj.dataset.color) {
+            case "green":
+                x = "green";
+                break;
+            case "blue":
+                x = "blue";
+                break;
+            case "red":
+                x = "red";
+                break;
+            case "yellow":
+                x = "yellow";
+                break;
+            case "orange":
+                x = "orange";
+                break;
+            case "black":
+                x = "black";
+                break;
+            case "white":
+                x = "white";
+                break;
+        }
+        if (x == "white") y = 14;
+        else y = 2;
+    };
+
+    object.erase = function erase() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
+    object.save = function save() {
+        var dataURL = canvas.toDataURL();
+    };
+
+    object.init();
+    drawOnScreenObject = object;
+    return object;
 }
+
+// SENDER DRAWERS LOGIC PORTION START
+function fitCurve(points) {
+    if (points.length <= 1) return points;
+    if (points.length === 2) return [{t: 'l', p: [points[0], points[1]]}];
+    if (points.length === 3) return [{t: 'q', p: points}];
+
+    let result = [];
+    for (let i = 0; i < points.length - 1; i += 3) {
+        let p0 = points[i];
+        let p1 = points[i + 1] || p0;
+        let p2 = points[i + 2] || p1;
+        let p3 = points[i + 3] || p2;
+
+        result.push({
+            t: 'b',
+            p: [p0, p1, p2, p3]
+        });
+    }
+
+    return result;
+}
+
+function isSharpTurn(points) {
+    if (points.length < 3) return false;
+    let angle1 = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x);
+    let angle2 = Math.atan2(points[2].y - points[1].y, points[2].x - points[1].x);
+    let angleDiff = Math.abs(angle2 - angle1);
+    return angleDiff > Math.PI / 4;
+}
+
+function drawOnThis(video) {
+    try {
+        if (!video || !video.container) {
+            warnlog("no video holder; not compatible");
+            return;
+        }
+        var container = video.container || video.parentNode;
+        var holder = container.holder || null;
+
+        var canvas = document.createElement('canvas');
+        if (!holder) {
+            holder = document.createElement("div");
+            container.holder = holder;
+            holder.className = "holder";
+            holder.dataset.holder = true;
+            
+            container.style = "display: flex;\
+                align-items: center;\
+                justify-content: center;";
+                
+            container.appendChild(holder);
+            holder.appendChild(video);
+            video.style.setProperty('top', '0', 'important');
+            video.style.setProperty('left', '0', 'important');
+            
+            session.windowed = false;
+            applyMirror();
+            
+            canvas.style.position = "fixed";
+            holder.style = "position: relative;\
+              width: 800px;\
+              height: 450px; \
+              display: flex;\
+              align-items: center;\
+              justify-content: center;"
+        } else {
+            canvas.className = "drawingCanvas";
+        }
+
+        canvas.style.pointerEvents = "none";
+        holder.appendChild(canvas);
+        video.canvas = canvas;
+
+        const ctx = canvas.getContext('2d');
+        ctx.lineWidth = 3;
+
+        const buttonContainer = document.createElement('div');
+        const enableDrawingBtn = document.createElement('button');
+        const clearDrawingBtn = document.createElement('button');
+        const undoDrawingBtn = document.createElement('button'); // Undo button
+
+        enableDrawingBtn.textContent = "Enable Drawing";
+        clearDrawingBtn.textContent = "Clear";
+        undoDrawingBtn.textContent = "Undo"; // Undo button text
+        buttonContainer.className = "buttonContainer";
+
+        buttonContainer.appendChild(enableDrawingBtn);
+        buttonContainer.appendChild(clearDrawingBtn);
+        buttonContainer.appendChild(undoDrawingBtn); // Add undo button to container
+        holder.appendChild(buttonContainer);
+
+        let isDrawing = false;
+        let drawingEnabled = false;
+        let drawingData = [];
+        let lastPoint = null;
+        let lastSentTime = 0;
+        const sendInterval = 1000; // 1 second
+        let lastPoints = [];
+
+        function startDrawing(e) {
+            if (!drawingEnabled) return;
+            isDrawing = true;
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!isDrawing || !drawingEnabled) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            let x = (e.clientX - rect.left) / rect.width;
+            let y = (e.clientY - rect.top) / rect.height;
+            
+            // Check if the mouse is within bounds
+            if (x < 0 || x > 1 || y < 0 || y > 1) {
+                stopDrawing();
+                return;
+            }
+
+            
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'red';
+
+            const canvasX = x * canvas.width;
+            const canvasY = y * canvas.height;
+
+            if (lastPoint) {
+                ctx.beginPath();
+                ctx.moveTo(lastPoint.x * canvas.width, lastPoint.y * canvas.height);
+                ctx.lineTo(canvasX, canvasY);
+                ctx.stroke();
+            }
+
+            x = Math.round(x*4000)/4000;
+            y = Math.round(y*4000)/4000;
+            
+            lastPoint = { x, y };
+            lastPoints.push({ x, y });
+
+            // Send data more frequently
+            if (lastPoints.length >= 5 || Date.now() - lastSentTime >= 50) {
+                sendDrawingData();
+            }
+        }
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = "red";
+
+            let isNewPath = true;
+
+            for (let i = 0; i < drawingData.length; i++) {
+                let segment = drawingData[i];
+                
+                if (!segment) {
+                    // End of a path
+                    ctx.stroke();
+                    ctx.beginPath();
+                    isNewPath = true;
+                    continue;
+                }
+
+                if (segment.t) {
+                    // This is a complex segment (line or bezier)
+                    switch(segment.t) {
+                        case 'b':
+                            let [p0, p1, p2, p3] = segment.p;
+                            if (isNewPath) {
+                                ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height);
+                                isNewPath = false;
+                            }
+                            ctx.bezierCurveTo(
+                                p1.x * canvas.width, p1.y * canvas.height,
+                                p2.x * canvas.width, p2.y * canvas.height,
+                                p3.x * canvas.width, p3.y * canvas.height
+                            );
+                            break;
+                        case 'q':
+                            let [q0, q1, q2] = segment.p;
+                            if (isNewPath) {
+                                ctx.moveTo(q0.x * canvas.width, q0.y * canvas.height);
+                                isNewPath = false;
+                            }
+                            ctx.quadraticCurveTo(
+                                q1.x * canvas.width, q1.y * canvas.height,
+                                q2.x * canvas.width, q2.y * canvas.height
+                            );
+                            break;
+                        case 'l':
+                            let [l0, l1] = segment.p;
+                            if (isNewPath) {
+                                ctx.moveTo(l0.x * canvas.width, l0.y * canvas.height);
+                                isNewPath = false;
+                            }
+                            ctx.lineTo(l1.x * canvas.width, l1.y * canvas.height);
+                            break;
+                        default:
+                            warnlog(segment);
+                    }
+                } else if (segment.x !== undefined && segment.y !== undefined) {
+                    // This is a simple point
+                    const canvasX = segment.x * canvas.width;
+                    const canvasY = segment.y * canvas.height;
+                    if (isNewPath) {
+                        ctx.moveTo(canvasX, canvasY);
+                        isNewPath = false;
+                    } else {
+                        ctx.lineTo(canvasX, canvasY);
+                    }
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        function processPoints(points) {
+            let processedPoints = [];
+            let currentSegment = [];
+            for (let i = 0; i < points.length; i++) {
+                if (points[i] === null) {
+                    if (currentSegment.length > 0) {
+                        if (currentSegment.length === 2) {
+                            processedPoints.push({t: 'l', p: currentSegment});
+                        } else {
+                            processedPoints.push(...fitCurve(currentSegment));
+                        }
+                        currentSegment = [];
+                    }
+                    processedPoints.push(null);
+                } else if (i > 0 && isSignificantBreak(points[i-1], points[i])) {
+                    if (currentSegment.length > 0) {
+                        if (currentSegment.length === 2) {
+                            processedPoints.push({t: 'l', p: currentSegment});
+                        } else {
+                            processedPoints.push(...fitCurve(currentSegment));
+                        }
+                        currentSegment = [];
+                    }
+                    currentSegment.push(points[i]);
+                } else {
+                    currentSegment.push(points[i]);
+                    if (currentSegment.length >= 4) {
+                        processedPoints.push(...fitCurve(currentSegment));
+                        currentSegment = [currentSegment[currentSegment.length - 1]];
+                    }
+                }
+            }
+            if (currentSegment.length > 0) {
+                if (currentSegment.length === 2) {
+                    processedPoints.push({t: 'l', p: currentSegment});
+                } else {
+                    processedPoints.push(...fitCurve(currentSegment));
+                }
+            }
+            return processedPoints;
+        }
+
+        function isSignificantBreak(point1, point2) {
+            const distance = Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
+            return distance > 0.05; // Increased threshold
+        }
+
+        function processCurrentSegment(segment) {
+            if (segment.length < 3) return segment;
+
+            if (isSharpTurn(segment)) {
+                return segment;
+            } else {
+                return fitCurve(segment);
+            }
+        }
+
+        function drawBezierCurve(points) {
+            const [start, control1, control2, end] = points;
+            ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+            ctx.bezierCurveTo(
+                control1.x * canvas.width, control1.y * canvas.height,
+                control2.x * canvas.width, control2.y * canvas.height,
+                end.x * canvas.width, end.y * canvas.height
+            );
+        }
+
+        function sendDrawingData(alt = false) {
+            if (alt === "clear") {
+                drawingData = [];
+                if (video.id === "videosource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing) {  
+                            session.sendMessage({ draw: "clear"}, UUID);
+                        }
+                    }
+                } else if (video.id === "screensharesource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing && !session.pcs[UUID].realUUID) { 
+                            session.sendMessage({ draw: "clear", altUUID:true}, UUID);
+                        }
+                    }
+                } else if (session.rpcs[video.dataset.UUID] && session.rpcs[video.dataset.UUID].allowDrawing){
+                    session.sendRequest({ draw: "clear" }, video.dataset.UUID);
+                }
+                return;
+            }
+			if (alt === "cleanup") {
+                drawingData = [];
+                if (video.id === "videosource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing) {  
+                            session.sendMessage({ draw: "cleanup"}, UUID);
+                        }
+                    }
+                } else if (video.id === "screensharesource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing && !session.pcs[UUID].realUUID) { 
+                            session.sendMessage({ draw: "cleanup", altUUID:true}, UUID);
+                        }
+                    }
+                } else if (session.rpcs[video.dataset.UUID] && session.rpcs[video.dataset.UUID].allowDrawing){
+                    session.sendRequest({ draw: "cleanup" }, video.dataset.UUID);
+                }
+                return;
+            }
+            if (alt === "undo") {
+                if (drawingData.length > 0) {
+                    // Find the last segment to remove
+					let found = false;
+                    for (let i = drawingData.length - 1; i >= 0; i--) {
+                        if (drawingData[i] === null) {
+                            drawingData = drawingData.slice(0, i);
+							if (found){
+								drawingData.push(null);
+								break;
+							}
+                        } else {
+							found = true;
+						}
+                        if (i === 0) { // Handle case when there's no null in drawingData
+                            drawingData = [];
+                        }
+                    }
+					redrawCanvas();
+					
+                    // Send the undo command
+                    if (video.id === "videosource") {
+                        for (var UUID in session.pcs) {
+                            if (session.pcs[UUID].allowDrawing) {
+                                session.sendMessage({ draw: "undo" }, UUID);
+                            }
+                        }
+                    } else if (video.id === "screensharesource") {
+                        for (var UUID in session.pcs) {
+                            if (session.pcs[UUID].allowDrawing && !session.pcs[UUID].realUUID) {
+                                session.sendMessage({ draw: "undo", altUUID: true }, UUID);
+                            }
+                        }
+                    } else if (session.rpcs[video.dataset.UUID] && session.rpcs[video.dataset.UUID].allowDrawing){
+                        session.sendRequest({ draw: "undo" }, video.dataset.UUID);
+                    }
+                    
+                }
+                return;
+            }
+			if (alt === "sync") {
+				if (!drawingData.length){return;}
+				// Send the processed points
+                if (video.id === "videosource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing) {
+							if (!session.pcs[UUID].initialDrawing){
+								session.pcs[UUID].initialDrawing = true;
+								session.sendMessage({ draw: {p: drawingData}}, UUID);
+							}
+                        }
+                    }
+                } else if (video.id === "screensharesource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing && !session.pcs[UUID].realUUID) {
+							if (!session.pcs[UUID].initialDrawing2){
+								session.pcs[UUID].initialDrawing2 = true;
+								session.sendMessage({ draw: {p: drawingData}, altUUID: true}, UUID);
+							}
+                        }
+                    }
+                } else if (session.rpcs[video.dataset.UUID] && session.rpcs[video.dataset.UUID].allowDrawing){
+					if (!session.rpcs[video.dataset.UUID].initialDrawing){
+						session.rpcs[video.dataset.UUID].initialDrawing = true;
+						session.sendRequest({ draw: {p: drawingData} }, video.dataset.UUID);
+					}
+                }
+				return;
+			}
+            if (lastPoints.length > 0) {
+                var processedPoints = processPoints(lastPoints);
+                lastPoints = [];
+                lastSentTime = Date.now();
+                
+                var dataToSend = {
+                    p: processedPoints
+                };
+                
+                drawingData.push(...processedPoints); // Store only points in drawingData
+
+                // Send the processed points with timestamp
+                if (video.id === "videosource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing) {
+							if (session.pcs[UUID].initialDrawing){
+								session.sendMessage({ draw: dataToSend}, UUID);
+							} else {
+								session.pcs[UUID].initialDrawing = true;
+								session.sendMessage({ draw: {p: drawingData}}, UUID);
+							}
+                        }
+                    }
+                } else if (video.id === "screensharesource") {
+                    for (var UUID in session.pcs) {
+                        if (session.pcs[UUID].allowDrawing && !session.pcs[UUID].realUUID) {
+							if (session.pcs[UUID].initialDrawing2){
+								session.sendMessage({ draw: dataToSend, altUUID: true}, UUID);
+							} else {
+								session.pcs[UUID].initialDrawing2 = true;
+								session.sendMessage({ draw: {p: drawingData}, altUUID: true}, UUID);
+							}
+                        }
+                    }
+                } else if (session.rpcs[video.dataset.UUID] && session.rpcs[video.dataset.UUID].allowDrawing){
+					if (session.rpcs[video.dataset.UUID].initialDrawing){
+						session.sendRequest({ draw: dataToSend }, video.dataset.UUID);
+					} else {
+						session.rpcs[video.dataset.UUID].initialDrawing = true;
+						session.sendRequest({ draw: {p: drawingData} }, video.dataset.UUID);
+					}
+                }
+            }
+        }
+        
+        function resizeCanvas() {
+            canvas.width = video.offsetWidth;
+            canvas.height = video.offsetHeight;
+            redrawCanvas();
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        video.addEventListener('resize', resizeCanvas);
+
+        enableDrawingBtn.addEventListener('click', () => {
+            drawingEnabled = !drawingEnabled;
+            enableDrawingBtn.textContent = drawingEnabled ? 'Disable Drawing' : 'Enable Drawing';
+            canvas.style.pointerEvents = drawingEnabled ? "auto" : "none";
+        });
+
+        clearDrawingBtn.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawingData = [];
+            lastPoints = [];
+            sendDrawingData("clear");
+        });
+
+        undoDrawingBtn.addEventListener('click', () => {
+            sendDrawingData("undo");
+        });
+        
+        function stopDrawing() {
+            if (isDrawing) {
+                
+                isDrawing = false;
+                ctx.beginPath();
+                lastPoint = null;
+                lastPoints.push(null); // Add null to mark end of path
+                sendDrawingData();
+            }
+        }
+        
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        canvas.addEventListener('mouseleave', stopDrawing);
+        canvas.addEventListener('mouseenter', (e) => {
+            if (e.buttons !== 1) { // If left mouse button is not pressed
+                stopDrawing();
+            }
+        });
+
+        function createCleanupFunction() {
+            return function cleanup() {
+				sendDrawingData("cleanup");
+
+				window.removeEventListener('resize', resizeCanvas);
+				video.removeEventListener('resize', resizeCanvas);
+				
+				if (canvas) {
+					canvas.removeEventListener('mousedown', startDrawing);
+					canvas.removeEventListener('mousemove', draw);
+					canvas.removeEventListener('mouseup', stopDrawing);
+					canvas.removeEventListener('mouseout', stopDrawing);
+					canvas.removeEventListener('mouseleave', stopDrawing);
+					canvas.removeEventListener('mouseenter', stopDrawing);
+					
+					if (canvas.parentNode) {
+						canvas.parentNode.removeChild(canvas);
+					}
+				}
+				
+				if (buttonContainer && buttonContainer.parentNode) {
+					buttonContainer.parentNode.removeChild(buttonContainer);
+				}
+            };
+        }
+		
+		function syncNewConnections() {
+			return function syncDrawing() {
+				setTimeout(()=>{
+					sendDrawingData("sync")
+				},4000);
+			}
+		}
+		
+		video.syncDrawOnVideo = syncNewConnections();
+        video.clearDrawOnVideo = createCleanupFunction();
+        return video.clearDrawOnVideo;
+    
+    } catch (e) {
+        errorlog(e);
+    }
+}
+
+// END SENDING LOGIC
+// var cleanUp = drawOnThis(document.getElementById('videoElement'));
+// cleanUp();
+// START RECEIVING LOGIC
+
+function receiveDrawingOnVideo(video, UUID = false) {
+    try {
+        if (!video || !video.container) {
+            warnlog("no video holder; not compatible");
+            return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.className = "drawingCanvas";
+        canvas.style.pointerEvents = "none";
+        var receivedDrawingData = [];
+
+        var container = video.parentNode;
+        if (!container) {
+            return;
+        }
+        container.appendChild(canvas);
+
+        var color = 'red';
+        if (UUID) {
+            color = getColorFromName(UUID);
+        }
+
+        function positionCanvas() {
+            const videoRect = video.getBoundingClientRect();
+            const computedStyle = getComputedStyle(video);
+
+            canvas.style.width = computedStyle.width;
+            canvas.style.height = computedStyle.height;
+            canvas.style.top = `${videoRect.top + window.scrollY}px`;
+            canvas.style.left = `${videoRect.left + window.scrollX}px`;
+            canvas.width = video.clientWidth;
+            canvas.height = video.clientHeight;
+
+            if (video.dataset.transform) {
+                canvas.style.transform = video.dataset.transform;
+            }
+            redrawCanvas();
+        }
+
+        const ctx = canvas.getContext('2d');
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.lineWidth = 3;
+        
+
+        function resizeCanvas() {
+            canvas.width = video.offsetWidth;
+            canvas.height = video.offsetHeight;
+            if (video.dataset.transform) {
+                canvas.style.transform = video.dataset.transform;
+            }
+            redrawCanvas();
+        }
+
+        let observer = null;
+        if (!(video && video.container && video.container.holder)) {
+            positionCanvas();
+            window.addEventListener('resize', positionCanvas);
+            video.addEventListener('resize', positionCanvas);
+            observer = new ResizeObserver(positionCanvas);
+            observer.observe(video);
+        } else {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            video.addEventListener('resize', resizeCanvas);
+        }
+
+        function drawBezierCurve(points) {
+            const [start, control1, control2, end] = points;
+            ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+            ctx.bezierCurveTo(
+                control1.x * canvas.width, control1.y * canvas.height,
+                control2.x * canvas.width, control2.y * canvas.height,
+                end.x * canvas.width, end.y * canvas.height
+            );
+        }
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = color;
+            
+            let isNewPath = true;
+
+            for (let i = 0; i < receivedDrawingData.length; i++) {
+                let segment = receivedDrawingData[i];
+                
+                if (!segment) {
+                    // End of a path
+                    ctx.stroke();
+                    ctx.beginPath();
+                    isNewPath = true;
+                    continue;
+                }
+
+                switch(segment.t) {
+                    case 'b':
+                        let [p0, p1, p2, p3] = segment.p;
+                        if (isNewPath) {
+                            ctx.moveTo(p0.x * canvas.width, p0.y * canvas.height);
+                            isNewPath = false;
+                        }
+                        ctx.bezierCurveTo(
+                            p1.x * canvas.width, p1.y * canvas.height,
+                            p2.x * canvas.width, p2.y * canvas.height,
+                            p3.x * canvas.width, p3.y * canvas.height
+                        );
+                        break;
+                    case 'q':
+                        let [q0, q1, q2] = segment.p;
+                        if (isNewPath) {
+                            ctx.moveTo(q0.x * canvas.width, q0.y * canvas.height);
+                            isNewPath = false;
+                        }
+                        ctx.quadraticCurveTo(
+                            q1.x * canvas.width, q1.y * canvas.height,
+                            q2.x * canvas.width, q2.y * canvas.height
+                        );
+                        break;
+                    case 'l':
+                        let [l0, l1] = segment.p;
+                        if (isNewPath) {
+                            ctx.moveTo(l0.x * canvas.width, l0.y * canvas.height);
+                            isNewPath = false;
+                        }
+                        ctx.lineTo(l1.x * canvas.width, l1.y * canvas.height);
+                        break;
+                    default:
+                        // Fallback for non-curve points
+                        if (isNewPath) {
+                            ctx.moveTo(segment.x * canvas.width, segment.y * canvas.height);
+                            isNewPath = false;
+                        } else {
+                            ctx.lineTo(segment.x * canvas.width, segment.y * canvas.height);
+                        }
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        function updateDrawing(newData) {
+            if (newData === "clear") {
+                receivedDrawingData = [];
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            } else if (newData === "undo") {
+                if (receivedDrawingData.length > 0) {
+                    // Find the last segment to remove
+					let found = false;
+                    for (let i = receivedDrawingData.length - 1; i >= 0; i--) {
+                        if (receivedDrawingData[i] === null) {
+                            receivedDrawingData = receivedDrawingData.slice(0, i);
+							if (found){
+								receivedDrawingData.push(null);
+								break;
+							}
+                        } else {
+							found = true;
+						}
+                        if (i === 0) { // Handle case when there's no null in receivedDrawingData
+                            receivedDrawingData = [];
+                        }
+                    }
+                    redrawCanvas();
+                }
+            } else {
+                // Handle both new and old data formats 
+                if (newData.p) {
+                    // New format
+                    receivedDrawingData.push(...newData.p);
+                } else if (Array.isArray(newData)) {
+                    // Old format or array of points
+                    receivedDrawingData.push(...newData);
+                } else if (typeof newData === 'object' && newData.x !== undefined && newData.y !== undefined) {
+                    // Single point
+                    receivedDrawingData.push(newData);
+                } else {
+                    console.error("Unexpected data format:", newData);
+                    return;
+                }
+                
+                redrawCanvas();
+            }
+        }
+
+        function clearDrawing() {
+            receivedDrawingData = [];
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function cleanup() {
+			
+			try {
+				if (observer) {
+					window.removeEventListener('resize', positionCanvas);
+					video.removeEventListener('resize', positionCanvas);
+					observer.disconnect();
+				} else {
+					window.removeEventListener('resize', resizeCanvas);
+					video.removeEventListener('resize', resizeCanvas);
+				}
+				
+				clearDrawing(); 
+			} catch(e){
+				errorlog(e);
+			}
+			
+            container.removeChild(canvas);
+        }
+
+        return {
+            updateDrawing,
+            clearDrawing,
+            cleanup
+        };
+    } catch (e) {
+        errorlog(e);
+    }
+}
+
+// END REMOTE DRAWING LOGIC
+
+
 //////////  Canvas Effects  ///////////////
 
 var drawFrameMirroredActive = false;
@@ -13659,61 +14491,302 @@ function toggleSpeakerMute(apply = false) {
 	}
 }
 
+const fileTransfers = {};
+
 function toggleFileshare(UUID = false, event = null) {
-	if (UUID === false) {
-		var string = 'Share a file with the group<br /><input id="fileselector3" onchange="session.shareFile(this, false, event);" type="file" title="Transfer any file to the group"/><div id="activeShares"></div>';
-	} else if (session.directorList.indexOf(UUID) >= 0) {
-		var string = 'The director requested you share a file with them.<br /><input id="fileselector3" onchange="session.shareFile(this, `' + UUID + '`, event);" type="file" title="Transfer a file to the director"/><div id="activeShares"></div>';
-	} else {
-		var string = 'Someone has requested you share a file with them.<br /><input id="fileselector3" onchange="session.shareFile(this, `' + UUID + '`, event);" type="file" title="Transfer a file to person"/><div id="activeShares"></div>';
-	}
-	warnUser(string, false, false);
-	if (session.hostedFiles) {
-		if (session.hostedFiles.length) {
-			getById("activeShares").innerHTML += "<div><u>Files being shared:</u></div>";
-		}
-		for (var i = 0; i < session.hostedFiles.length; i++) {
-			//	id: session.hostedFiles[i].id,
-			//	name: session.hostedFiles[i].name,
-			//	size: session.hostedFiles[i].size
-			getById("activeShares").innerHTML += "<div><b>" + session.hostedFiles[i].name + "</b> (" + Math.ceil(session.hostedFiles[i].size / ((1024 * 1024) / 10)) / 10 + "-MB)</div>";
-		}
-	}
-	if (session.hostedTransfers) {
-		getById("activeShares").innerHTML += "<div><i>" + session.hostedTransfers.length + " file transfers in progress.</i></div>";
+	if (session.cleanOputput){return;}
+
+    let string = '';
+    if (UUID === false) {
+        string = 'Share a file with the group<br /><input id="fileselector3" onchange="session.shareFile(this, false, event);" type="file" title="Transfer any file to the group"/>';
+    } else if (session.directorList.indexOf(UUID) >= 0) {
+        string = `The director requested you share a file with them.<br /><input id="fileselector3" onchange="session.shareFile(this, '${UUID}', event);" type="file" title="Transfer a file to the director"/>`;
+    } else {
+        string = `Someone has requested you share a file with them.<br /><input id="fileselector3" onchange="session.shareFile(this, '${UUID}', event);" type="file" title="Transfer a file to person"/>`;
+    }
+
+    warnUser(string, false, false);
+	
+	updateFileShare();
+}
+
+function updateFileShare(){
+	if (session.cleanOputput){return;}
+	
+    const activeSharesDiv = document.getElementById('activeShares');
+    activeSharesDiv.innerHTML = ''; // Clear existing content
+    
+    // Display active shares
+    if (session.hostedFiles && session.hostedFiles.length) {
+        activeSharesDiv.innerHTML += "<div><u>Files being shared:</u></div>";
+        session.hostedFiles.forEach(file => {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'file-name';
+            nameSpan.innerHTML = `<b>${file.name}</b> (${Math.ceil(file.size / ((1024 * 1024) / 10)) / 10}-MB)`;
+            fileDiv.appendChild(nameSpan);
+            
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'file-progress';
+            
+            const progressBar = document.createElement('progress');
+            const progress = (fileTransfers[file.id] && fileTransfers[file.id].progress) || 0;
+            progressBar.value = progress;
+            progressBar.max = 100;
+            progressDiv.appendChild(progressBar);
+            
+            const progressText = document.createElement('span');
+            progressText.className = 'progress-text';
+            progressText.textContent = `${progress}% uploaded`;
+            progressDiv.appendChild(progressText);
+            
+            fileDiv.appendChild(progressDiv);
+            
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'cancel-transfer';
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.dataset.fid = file.id;
+            fileDiv.appendChild(cancelBtn);
+            
+            activeSharesDiv.appendChild(fileDiv);
+        });
+    }
+
+    const transferCount = session.hostedFiles ? session.hostedFiles.length : 0;
+	if (transferCount || activeSharesDiv.length){
+		activeSharesDiv.innerHTML += `<div><i>${transferCount} file transfer${transferCount !== 1 ? 's' : ''} in progress.</i></div>`;
+		// Add event listener to the parent element
+		activeSharesDiv.addEventListener('click', function(e) {
+			if (e.target.classList.contains('cancel-transfer')) {
+				e.preventDefault();
+				e.stopPropagation();
+				const fileId = e.target.dataset.fid;
+				cancelFileTransfer(fileId);
+			}
+		});
 	}
 }
 
+function cancelFileTransfer(fileId) {
+	console.log(fileId);
+	
+    if (fileTransfers[fileId]) {
+        fileTransfers[fileId].channel.close();
+        delete fileTransfers[fileId];
+    }
+    // Remove the file from hostedFiles array
+    session.hostedFiles = session.hostedFiles.filter(file => file.id !== fileId);
+    updateFileShare(); // Refresh the file share display
+}
+
+
+session.sendFile = function (UUID, fileid) {
+    log("SENDING FILE: " + fileid + " " + UUID);
+    var fr = new FileReader();
+    var fid = session.hostedFiles.findIndex(file => file.id === fileid);
+    
+    if (fid === -1) {
+        warnlog("requested file was not found");
+        return;
+    } else if (session.hostedFiles[fid].state == 0) {
+        warnlog("requested file has been removed.");
+        return;
+    } else if (!(session.hostedFiles[fid].restricted === false || session.hostedFiles[fid].restricted === UUID)) {
+        warnlog("user didn't have access for this file.");
+        return;
+    }
+    
+    var chunksize = 16384;
+    var cid = 0;
+    var channelName = fileid;
+    if (channelName === "sendChannel") {
+        channelName = "sendChannel_" + session.generateStreamID(5);
+    }
+    
+    var transferchannel;
+    if (UUID in session.pcs) {
+        transferchannel = session.pcs[UUID].createDataChannel(channelName);
+    } else if (UUID in session.rpcs) {
+        transferchannel = session.rpcs[UUID].createDataChannel(channelName);
+    } else {
+        warnlog("UUID does not exist");
+        return;
+    }
+    
+    transferchannel.binaryType = "arraybuffer";
+    var chunk = session.hostedFiles[fid].file.slice(0, chunksize);  // Use the stored File object
+    
+    fileTransfers[fileid] = {
+        channel: transferchannel,
+        progress: 0
+    };
+    
+    transferchannel.onopen = () => {
+        transferchannel.send(JSON.stringify({ type: "filetransfer", size: session.hostedFiles[fid].size, filename: session.hostedFiles[fid].name, id: session.hostedFiles[fid].id }));
+        fr.readAsArrayBuffer(chunk);
+    };
+    
+    transferchannel.onclose = () => {
+        try {
+            var index = session.hostedTransfers.indexOf(transferchannel);
+            if (index > -1) {
+                session.hostedTransfers.splice(index, 1);
+            }
+        } catch (e) {
+            errorlog(e);
+        }
+        log("Transfer ended");
+        delete fileTransfers[fileid];
+        updateFileShare(); // Refresh the file share display
+        transferchannel = null;
+    };
+    
+    transferchannel.onmessage = event => {
+		// console.log(event.data);
+	};
+
+	session.hostedTransfers.push(transferchannel);
+    
+    fr.onload = function () {
+        if (session.hostedFiles[fid].state == 0) {
+            return;
+        }
+        var arrayBuffer = fr.result;
+        try {
+            transferchannel.send(arrayBuffer);
+        } catch (e) {
+            try {
+                transferchannel.close();
+            } catch (e) {}
+            warnlog(e);
+            return;
+        }
+        cid += 1;
+        const progress = Math.min(100, Math.round((cid * chunksize / session.hostedFiles[fid].size) * 100));
+        fileTransfers[fileid].progress = progress;
+        updateFileShare(); // Update progress display
+        
+        if (cid * chunksize < session.hostedFiles[fid].size) {
+            try {
+                chunk = session.hostedFiles[fid].file.slice(cid * chunksize, (cid + 1) * chunksize);  // Use the stored File object
+                fr.readAsArrayBuffer(chunk);
+            } catch (e) {
+                errorlog(e);
+            }
+        } else {
+            transferchannel.send("EOF1");
+            transferchannel.close();
+        }
+    };
+};
+
 function toggleChat(event = null) {
-	// TODO: I need to have this be MUTE, toggle, with volume not touched.
-	if (session.chat == false) {
-		setTimeout(function () {
-			document.addEventListener("click", toggleChat);
-		}, 10);
-
-		getById("chatModule").addEventListener("click", function (e) {
-			e.stopPropagation();
-			return false;
-		});
-		session.chat = true;
-		getById("chattoggle").className = "las la-comment-dots toggleSize";
-		getById("chatModule").classList.remove("hidden");
-		getById("chatInput").focus(); // give it keyboard focus
-	} else {
-		session.chat = false;
-		getById("chattoggle").className = "las la-comment-alt toggleSize";
-		getById("chatModule").classList.add("hidden");
-
-		document.removeEventListener("click", toggleChat);
-		getById("chatModule").removeEventListener("click", function (e) {
-			e.stopPropagation();
-			return false;
-		});
+    const chatModule = document.getElementById('chatModule');
+	
+	if (!chatModule.configured){
+		setupAdjustableChat();
 	}
-	if (getById("chatNotification").value) {
-		getById("chatNotification").value = 0;
-	}
-	getById("chatNotification").classList.remove("notification", "red");
+	
+    if (session.chat === false) {
+        session.chat = true;
+        chatModule.classList.remove("hidden");
+        getById("chatInput").focus();
+    } else {
+        session.chat = false;
+        chatModule.classList.add("hidden");
+    }
+    updateMessages();
+}
+function setupAdjustableChat() {
+    const chatModule = document.getElementById('chatModule');
+    chatModule.configured = true;
+    
+    const chatBody = getById('chatBody');
+    let isResizing = false;
+    let isDragging = false;
+    let startY, startHeight, startX, startTop, startLeft;
+
+    function initResize(e) {
+        isResizing = true;
+		document.body.style.userSelect = 'none';
+        startY = e.clientY;
+        startHeight = parseInt(window.getComputedStyle(chatBody).height, 10);
+        document.addEventListener('mousemove', resize);
+        document.addEventListener('mouseup', stopResize);
+    }
+
+    function resize(e) {
+        if (isResizing) {
+            const maxHeight = window.innerHeight - chatModule.offsetTop - 20; // 20px buffer
+            const newHeight = Math.min(startHeight + (e.clientY - startY), maxHeight);
+            chatBody.style.height = `${Math.max(newHeight, 50)}px`; // Minimum height of 50px
+			keepInBounds();
+        }
+    }
+
+    function stopResize() {
+        isResizing = false;
+        document.removeEventListener('mousemove', resize);
+        document.removeEventListener('mouseup', stopResize);
+		document.body.style.userSelect = '';
+    }
+
+    function initDrag(e) {
+        isDragging = true;
+		document.body.style.userSelect = 'none';
+        startX = e.clientX - chatModule.offsetLeft;
+        startY = e.clientY - chatModule.offsetTop;
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', stopDrag);
+    }
+
+    function drag(e) {
+        if (isDragging) {
+            const newLeft = Math.min(Math.max(e.clientX - startX, 0), window.innerWidth - chatModule.offsetWidth);
+            const newTop = Math.min(Math.max(e.clientY - startY, 0), window.innerHeight - chatModule.offsetHeight);
+            chatModule.style.left = `${newLeft}px`;
+            chatModule.style.top = `${newTop}px`;
+            chatModule.style.bottom = 'auto';
+            chatModule.style.right = 'auto';
+			keepInBounds();
+        }
+    }
+
+    function stopDrag() {
+        isDragging = false;
+        document.removeEventListener('mousemove', drag);
+        document.removeEventListener('mouseup', stopDrag);
+		document.body.style.userSelect = '';
+    }
+
+    function keepInBounds() {
+        const rect = chatModule.getBoundingClientRect();
+		
+        if (rect.right > window.innerWidth) {
+            chatModule.style.left = `${window.innerWidth - rect.width}px`;
+        }
+        if (rect.bottom > window.innerHeight) {
+            chatModule.style.top = `${window.innerHeight - rect.height}px`;
+        }
+        if (rect.left < 0) {
+            chatModule.style.left = '0px';
+        }
+        if (rect.top < 0) {
+            chatModule.style.top = '0px';
+            chatModule.style.bottom = 'auto';
+        }
+    }
+
+    chatModule.querySelector('.resizer').addEventListener('mousedown', initResize);
+    chatModule.querySelector('.chat-header').addEventListener('mousedown', initDrag);
+    
+    // Keep chat window in bounds when window is resized
+    window.addEventListener('resize', keepInBounds);
+    
+    // Initial positioning
+    keepInBounds();
 }
 
 function directorAdvanced(ele) {
@@ -14467,6 +15540,85 @@ function directHangup(ele, event) {
 		miniTranslate(ele);
 		//ele.style.backgroundColor = null;
 		ele.classList.remove("armed");
+		return false;
+	}
+}
+
+function directAudioChannel(ele, event, director=false) {
+	var UUID = ele.dataset.UUID;
+	var channel = parseInt(ele.dataset.channel);
+	var added = false;
+	
+	if (!(event.ctrlKey || event.metaKey)) {
+		if (ele.dataset.state == "1") {
+			ele.dataset.state = "0";
+			ele.classList.remove("pressed");
+			ele.ariaPressed = "false";
+		} else {
+			ele.dataset.state = "1"
+			ele.classList.add("pressed");
+			ele.ariaPressed = "true";
+			added = true;
+		}
+	} else if (ele.dataset.state == "1"){
+		added = true;
+	}
+	
+	if (director){
+		
+		if (added){
+			document.querySelectorAll('#controls_director [data-action-type="sceneAudioChannel"][data-state="1"]:not([data-channel="'+channel+'"])').forEach(el=>{
+				el.dataset.state = "0";
+				el.classList.remove("pressed");
+				el.ariaPressed = "false";
+			});
+		} else {
+			document.querySelectorAll('#controls_director [data-action-type="sceneAudioChannel"][data-state="1"][data-channel]').forEach(el=>{
+				el.dataset.state = "0";
+				el.classList.remove("pressed");
+				el.ariaPressed = "false";
+			});
+			channel = false;
+		}
+
+	} else {
+	
+		if (added){
+			document.querySelectorAll('[data-sid][data--u-u-i-d="'+UUID+'"][data-action-type="sceneAudioChannel"][data-state="1"]:not([data-channel="'+channel+'"])').forEach(el=>{
+				el.dataset.state = "0";
+				el.classList.remove("pressed");
+				el.ariaPressed = "false";
+			});
+		} else {
+			document.querySelectorAll('[data-sid][data--u-u-i-d="'+UUID+'"][data-channel][data-action-type="sceneAudioChannel"][data-state="1"]').forEach(el=>{
+				el.dataset.state = "0";
+				el.classList.remove("pressed");
+				el.ariaPressed = "false";
+			});
+			channel = false;
+		}
+	}
+	
+
+	var msg = {};
+
+	msg.audioOutputChannel = channel;
+	if (director){
+		msg.sid = session.streamID;
+	} else {
+		msg.sid = ele.dataset.sid;
+	}
+
+	for (var uuid in session.pcs) {
+		if (session.pcs[uuid].scene !== false) {
+			session.sendMessage(msg, uuid);
+		}
+	}
+	syncDirectorState(ele);
+
+	if (channel) {
+		return true;
+	} else {
 		return false;
 	}
 }
@@ -15508,26 +16660,27 @@ function directMute(ele, event = false) {
 }
 
 function requestFileUpload(ele) {
-	ele.classList.add("pressed");
-	ele.ariaPressed = "true";
-	ele.disabled = true;
-	ele.innerHTML = '<i class="las la-file-upload"></i><span data-translate="request-upload"> Requesting..</span>';
-	setTimeout(
-		function (ele) {
-			try {
-				ele.innerHTML = '<i class="las la-file-upload"></i><span data-translate="request-upload"> Request File</span>';
-				ele.classList.remove("pressed");
-				ele.ariaPressed = "false";
-				ele.disabled = false;
-			} catch (e) {}
-		},
-		15000,
-		ele
-	);
-	var msg = {};
-	msg.requestUpload = true; // toggleFileshare
-	msg.UUID = ele.dataset.UUID;
-	session.sendRequest(msg, ele.dataset.UUID);
+    ele.classList.add("pressed");
+    ele.ariaPressed = "true";
+    ele.disabled = true;
+    ele.innerHTML = '<i class="las la-file-upload"></i><span data-translate="request-upload"> Requesting..</span>';
+    setTimeout(
+        function (ele) {
+            try {
+                ele.innerHTML = '<i class="las la-file-upload"></i><span data-translate="request-upload"> Request File</span>';
+                ele.classList.remove("pressed");
+                ele.ariaPressed = "false";
+                ele.disabled = false;
+            } catch (e) {}
+        },
+        15000,
+        ele
+    );
+    var msg = {
+        requestUpload: true,
+        UUID: ele.dataset.UUID
+    };
+    session.sendRequest(msg, ele.dataset.UUID);
 }
 
 function remoteSpeakerMute(ele, event = false) {
@@ -15920,10 +17073,14 @@ function applyMuteState(UUID) {
 		if (session.noaudio === true) {
 			muteOutcome = true;
 		} else if (session.noaudio.length) {
-			if ("streamID" in session.rpcs[UUID] && session.rpcs[UUID].streamID && !session.noaudio.includes(session.rpcs[UUID].streamID)) {
+			if (("streamID" in session.rpcs[UUID]) && session.rpcs[UUID].streamID && !session.noaudio.includes(session.rpcs[UUID].streamID)) {
 				muteOutcome = true;
 			}
 		} else {
+			muteOutcome = true;
+		}
+	} else if (!muteOutcome && session.excludeaudio){
+		if (("streamID" in session.rpcs[UUID]) && session.rpcs[UUID].streamID && session.excludeaudio.includes(session.rpcs[UUID].streamID)) {
 			muteOutcome = true;
 		}
 	}
@@ -16189,6 +17346,20 @@ async function publishScreen() {
 
 	if (quality == -1) {
 		// unlocked capture resolution
+	} else if (quality == -2) {
+		video.width = {
+			ideal: 3840
+		};
+		video.height = {
+			ideal: 2160
+		};
+	} else if (quality == -3) {
+		video.width = {
+			ideal: 2560
+		};
+		video.height = {
+			ideal: 1440
+		};
 	} else if (quality == 0) {
 		video.width = {
 			ideal: 1920
@@ -17068,10 +18239,12 @@ function soloLinkGenerator(streamID, scene = true) {
 
 	var wss = "";
 	if (session.wssSetViaUrl) {
-		if (session.customWSS && session.customWSS !== true) {
+		if (session.customWSS && (session.customWSS !== true)) {
 			wss = "&pie=" + session.customWSS;
-		} else {
+		} else if (session.customWSS==true){
 			wss = "&wss=" + session.wss;
+		} else {
+			wss = "&wss2=" + session.wss;
 		}
 	}
 
@@ -17780,7 +18953,7 @@ function disabledWebAudioPathway() {
 
 function outboundAudioPipeline(sourceStream = false) {
 	// this function isn't letting me change the audio source
-
+	
 	if (session.disableWebAudio) {
 		return disabledWebAudioPathway(); // safemode
 	}
@@ -18196,7 +19369,6 @@ function outboundAudioPipeline(sourceStream = false) {
 			} catch (e) {
 				warnlog("session.audioCtx.resume(); failed");
 			}
-
 			return webAudio.destination.stream;
 		} else {
 			//if (session.mobile){return streamSrc;} // this avoids issues on mobile? <- caused problems
@@ -18215,6 +19387,7 @@ function outboundAudioPipeline(sourceStream = false) {
 					newStream.addTrack(track, streamSrc);
 				});
 			}
+			
 			return newStream;
 		}
 	} catch (e) {
@@ -19546,7 +20719,8 @@ async function toggleWidgetURL(ele) {
 			let widget = document.getElementById("widget");
 			if (widget) {
 				getById("widget").remove();
-				getById("guestFeeds").style.width = "100%";
+				getById("directorlayout").classList.remove("widget");
+				getById("directorlayout").classList.remove("left");
 			}
 		}
 		pokeIframeAPI("widget-src", session.widget);
@@ -19583,16 +20757,24 @@ async function toggleWidgetURL(ele) {
 				widget.id = "widget";
 				widget.setAttribute("allowtransparency", "true");
 				widget.src = parseURL4Iframe(session.widget);
+				
+				getById("directorlayout").classList.add("widget");
+				
+				if (session.widgetleft){
+					widget.classList.add("left");
+					getById("directorlayout").classList.add("left");
+				}
+				
 				log(widget.src);
 				document.body.appendChild(widget);
-				getById("guestFeeds").style.width = "75%";
 			}
 		} else if (session.widget) {
 			if (session.widget) {
 				widget.src = parseURL4Iframe(session.widget);
 			} else {
 				getById("widget").remove();
-				getById("guestFeeds").style.width = "100%";
+				getById("directorlayout").classList.remove("widget");
+				getById("directorlayout").classList.remove("left");
 			}
 		}
 	}
@@ -19635,8 +20817,10 @@ async function createRoomCallback(passAdd, passAdd2) {
 	if (session.wssSetViaUrl) {
 		if (session.customWSS && session.customWSS !== true) {
 			wss = "&pie=" + session.customWSS;
-		} else {
+		} else if (session.customWSS==true){
 			wss = "&wss=" + session.wss;
+		} else {
+			wss = "&wss2=" + session.wss;
 		}
 	}
 
@@ -20972,6 +22156,16 @@ function createControlBox(UUID, soloLink, streamID, slot_init = false) {
 	} else {
 		getById("guestFeeds").appendChild(container);
 	}
+	
+	controls.innerHTML += "<div id='advanced_audio_director_" + UUID + "' class='hidden advancedAudioSettings'></div>";
+	if (session.rpcs[UUID].pseudoguest){
+		controls.querySelectorAll("[data-action-type]").forEach(ele => {
+			ele.dataset.UUID = UUID;
+			ele.dataset.sid = streamID;
+		});
+		return;
+	}
+	controls.innerHTML += "<div id='advanced_video_director_" + UUID + "' class='hidden advancedVideoSettings'></div>";
 
 	if (!session.rpcs[UUID].voiceMeter) {
 		if (session.meterStyle == 1) {
@@ -21001,25 +22195,12 @@ function createControlBox(UUID, soloLink, streamID, slot_init = false) {
 	session.rpcs[UUID].remoteVideoMuteElement.id = "";
 	session.rpcs[UUID].remoteVideoMuteElement.style.top = "5px";
 	session.rpcs[UUID].remoteVideoMuteElement.style.right = "28px";
-
+	
 	session.rpcs[UUID].remoteRaisedHandElement = getById("raisedHandTemplate").cloneNode(true);
 	session.rpcs[UUID].remoteRaisedHandElement.id = "";
 	session.rpcs[UUID].remoteRaisedHandElement.style.top = "5px";
 	session.rpcs[UUID].remoteRaisedHandElement.style.right = "49px";
-
-	var videoContainer = document.createElement("div");
-	videoContainer.id = "videoContainer_" + UUID; // needed to delete on user disconnect
-	videoContainer.style.margin = "0";
-	videoContainer.style.position = "relative";
-	videoContainer.style.minHeight = "30px";
-
-	var iframeDetails = document.createElement("div");
-	iframeDetails.id = "iframeDetails_" + UUID; // needed to delete on user disconnect
-	iframeDetails.className = "iframeDetails hidden";
-
-	controls.innerHTML += "<div id='advanced_audio_director_" + UUID + "' class='hidden advancedAudioSettings'></div>";
-	controls.innerHTML += "<div id='advanced_video_director_" + UUID + "' class='hidden advancedVideoSettings'></div>";
-
+	
 	var handsID = "hands_" + UUID;
 
 	// controls.innerHTML += "<div class='flexBreak'><span data-translate='links'>Links</span></div>"; //Seems to create an empty div.
@@ -21163,8 +22344,14 @@ function createControlBox(UUID, soloLink, streamID, slot_init = false) {
 	var videoContainerControlBox = document.createElement("div");
 	videoContainerControlBox.className = "controlVideoBox";
 	container.containerControlBox = videoContainerControlBox;
-
 	container.appendChild(videoContainerControlBox);
+
+	var videoContainer = document.createElement("div");
+	videoContainer.id = "videoContainer_" + UUID; // needed to delete on user disconnect
+	videoContainer.style.margin = "0";
+	videoContainer.style.position = "relative";
+	videoContainer.style.minHeight = "30px";
+	
 	videoContainerControlBox.appendChild(videoContainer);
 
 	if (session.signalMeter) {
@@ -21248,6 +22435,10 @@ function createControlBox(UUID, soloLink, streamID, slot_init = false) {
 		}
 		videoContainer.appendChild(session.rpcs[UUID].connectionDetails);
 	}
+	
+	var iframeDetails = document.createElement("div");
+	iframeDetails.id = "iframeDetails_" + UUID; // needed to delete on user disconnect
+	iframeDetails.className = "iframeDetails hidden";
 
 	videoContainer.appendChild(session.rpcs[UUID].voiceMeter);
 	videoContainer.appendChild(session.rpcs[UUID].remoteMuteElement);
@@ -21255,7 +22446,7 @@ function createControlBox(UUID, soloLink, streamID, slot_init = false) {
 	videoContainer.appendChild(session.rpcs[UUID].remoteRaisedHandElement);
 	videoContainer.appendChild(iframeDetails);
 	container.appendChild(controls);
-
+	
 	session.group.forEach(group => {
 		var ele = controls.querySelector('[data-action-type="toggle-group"][data--u-u-i-d="' + UUID + '"][data-group="' + group + '"]');
 		if (!ele) {
@@ -21280,6 +22471,7 @@ function createControlBox(UUID, soloLink, streamID, slot_init = false) {
 			}
 		}
 	});
+	
 
 	initSceneList(UUID);
 	syncSceneState(streamID);
@@ -21301,6 +22493,42 @@ function minimizeMe(button, director = false) {
 		getById(director).classList.toggle("minimized");
 	}
 }
+
+function blackoutMode() {
+    var overlay = document.getElementById("blackoutOverlay");
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = "blackoutOverlay";
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 9999;
+        `;
+        overlay.textContent = 'Click to exit black-out mode';
+        document.body.appendChild(overlay);
+    } else {
+        overlay.classList.remove("hidden");
+    }
+    
+    function exitBlackout() {
+        overlay.classList.add("hidden");
+        overlay.removeEventListener('click', exitBlackout);
+    }
+    
+    overlay.addEventListener('click', exitBlackout);
+}
+
+
 function cycleCameras() {
 	if (session.screenShareState) {
 		warnUser("Stop the screen-share first.");
@@ -21427,52 +22655,61 @@ var SelectedAudioInputDevices = []; // ..
 var SelectedVideoInputDevices = []; // ..
 
 async function enumerateDevices() {
-	log("enumerated start");
+    log("enumerated start");
 
-	if (typeof navigator.mediaDevices === "object" && typeof navigator.mediaDevices.enumerateDevices === "function") {
-		return await navigator.mediaDevices.enumerateDevices();
-	} else if (typeof navigator.enumerateDevices === "function") {
-		log("enumerated failed 1");
-		return await navigator.enumerateDevices();
-	} else {
-		return await new Promise((resolve, reject) => {
-			try {
-				if (window.MediaStreamTrack == null || window.MediaStreamTrack.getSources == null) {
-					throw new Error();
-				}
-				window.MediaStreamTrack.getSources(devices => {
-					resolve(
-						devices
-							.filter(device => {
-								return device.kind.toLowerCase() === "video" || device.kind.toLowerCase() === "videoinput";
-							})
-							.map(device => {
-								return {
-									deviceId: device.deviceId != null ? device.deviceId : "",
-									groupId: device.groupId,
-									kind: "videoinput",
-									label: device.label,
-									toJSON: /* istanbul ignore next */ function () {
-										return this;
-									}
-								};
-							})
-					);
-				});
-			} catch (e) {
-				errorlog(e);
-				if (!session.cleanOutput) {
-					if (location.protocol !== "https:") {
-						warnUser("Error listing the media devices.\n\nYour browser will not allow access to media devices without SSL enabled.\n\nPossible solutions include switching to https, accessing the site from http://localhost, or enabling the `unsafely-treat-insecure-origin-as-secure` browser switch.");
-					} else if ("isSecureContext" in window && window.isSecureContext === false) {
-						warnUser("Error listing the media devices.\n\nThe website may have assets loaded in an insecure context.");
-					} else {
-						warnUser("An unknown error occured while trying to list the media devices.");
-					}
-				}
+    const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(function(){
+			if (!session.cleanOutput) {
+				warnUser("The browser has not responded to our request to list available media devices.\n\nPossible solutions:\n\n- Restart the computer and try again\n- Try another browser\n- Remove or uninstall devices that are not needed\n- Uninstall and reinstall your browser");
 			}
-		});
-	}
+			new Error("Device enumeration timed out.\n\nThe browser has not responded to our request to list available media devices.\n\nPossible solutions:\n\n- Restart the computer and try again\n- Try another browser\n- Remove or uninstall devices that are not needed\n- Uninstall and reinstall your browser");
+		}), 15000)
+    );
+
+    const enumeratePromise = new Promise(async (resolve, reject) => {
+        try {
+            if (typeof navigator.mediaDevices === "object" && typeof navigator.mediaDevices.enumerateDevices === "function") {
+                resolve(await navigator.mediaDevices.enumerateDevices());
+            } else if (typeof navigator.enumerateDevices === "function") {
+                log("enumerated failed 1");
+                resolve(await navigator.enumerateDevices());
+            } else {
+                window.MediaStreamTrack.getSources(devices => {
+                    resolve(
+                        devices
+                            .filter(device => {
+                                return device.kind.toLowerCase() === "video" || device.kind.toLowerCase() === "videoinput";
+                            })
+                            .map(device => {
+                                return {
+                                    deviceId: device.deviceId != null ? device.deviceId : "",
+                                    groupId: device.groupId,
+                                    kind: "videoinput",
+                                    label: device.label,
+                                    toJSON: /* istanbul ignore next */ function () {
+                                        return this;
+                                    }
+                                };
+                            })
+                    );
+                });
+            }
+        } catch (e) {
+            errorlog(e);
+            if (!session.cleanOutput) {
+                if (location.protocol !== "https:") {
+                    warnUser("Error listing the media devices.\n\nYour browser will not allow access to media devices without SSL enabled.\n\nPossible solutions include switching to https, accessing the site from http://localhost, or enabling the `unsafely-treat-insecure-origin-as-secure` browser switch.");
+                } else if ("isSecureContext" in window && window.isSecureContext === false) {
+                    warnUser("Error listing the media devices.\n\nThe website may have assets loaded in an insecure context.");
+                } else {
+                    warnUser("An unknown error occured while trying to list the media devices.");
+                }
+            }
+            reject(e);
+        }
+    });
+
+    return Promise.race([enumeratePromise, timeout]);
 }
 
 function requestOutputAudioStream() {
@@ -21574,14 +22811,16 @@ async function requestAudioStream() {
 					audioInputSelect.style.minHeight = (audioInputSelect.childElementCount + 1) * 1.15 * 16 + "px";
 					audioInputSelect.style.minWidth = "342px";
 
+					// normalizeDeviceLabel(track.label)
+					
 					if (session.audioDevice && typeof session.audioDevice === "object" && session.audioDevice.length) {
 						for (let i = 0; i !== audioInputSelect.length; ++i) {
 							let deviceInfo = audioInputSelect[i];
 							if (session.audioDevice.includes(deviceInfo.value)) {
 								deviceInfo.selected = true;
-							} else if (deviceInfo.innerText.replace(/[\W]+/g, "_").toLowerCase().startsWith(session.audioDevice)) {
+							} else if (normalizeDeviceLabel(deviceInfo.innerText).startsWith(session.audioDevice)) {
 								deviceInfo.selected = true;
-							} else if (deviceInfo.innerText.replace(/[\W]+/g, "_").toLowerCase().includes(session.audioDevice)) {
+							} else if (normalizeDeviceLabel(deviceInfo.innerText).includes(session.audioDevice)) {
 								deviceInfo.selected = true;
 							}
 						}
@@ -21651,6 +22890,10 @@ function loadSettings() {
 		} catch (e) {}
 	}
 }
+
+function normalizeDeviceLabel(deviceName) {
+	return String(deviceName).replace(/[\W]+/g, "_").toLowerCase();
+} 
 
 function gotDevices(deviceInfos, miconly = false) {
 	log("got devices!1");
@@ -21748,7 +22991,7 @@ function gotDevices(deviceInfos, miconly = false) {
 			deviceInfo = deviceInfos[i];
 			if (deviceInfo.kind === "videoinput" && (deviceInfo.label.toLowerCase().startsWith("ndi") || deviceInfo.label.toLowerCase().startsWith("newtek"))) {
 				tmp.push(deviceInfo);
-				log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
+				log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
 			}
 		}
 		deviceInfos = tmp;
@@ -21763,7 +23006,7 @@ function gotDevices(deviceInfos, miconly = false) {
 						matched.push(deviceInfos[i]);
 					} else {
 						for (var j = 0; j < session.audioDevice.length; j++) {
-							if (deviceInfos[i].label.replace(/[\W]+/g, "_").toLowerCase().includes(session.audioDevice[j])) {
+							if (normalizeDeviceLabel(deviceInfos[i].label).includes(session.audioDevice[j])) {
 								matched.push(deviceInfos[i]);
 								log("A DEVICE FOUND = " + deviceInfos[i].label);
 								break;
@@ -21815,13 +23058,13 @@ function gotDevices(deviceInfos, miconly = false) {
 
 			for (let i = 0; i !== deviceInfos.length; ++i) {
 				deviceInfo = deviceInfos[i];
-				if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().startsWith(session.videoDevice)) {
+				if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).startsWith(session.videoDevice)) {
 					tmp.push(deviceInfo);
 					log("Starts With V DEVICE FOUND");
 				} else if (deviceInfo.deviceId === session.videoDevice) {
 					tmp.push(deviceInfo);
 					log("EXACT V DEVICE FOUND");
-				} else if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(session.videoDevice)) {
+				} else if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes(session.videoDevice)) {
 					tmp2.push(deviceInfo);
 					log("Includes With V DEVICE FOUND");
 				} else {
@@ -21844,26 +23087,26 @@ function gotDevices(deviceInfos, miconly = false) {
 			if (session.facingMode == "environment") {
 				for (let i = 0; i !== deviceInfos.length; ++i) {
 					deviceInfo = deviceInfos[i];
-					if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes("back")) {
+					if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes("back")) {
 						tmp.push(deviceInfo);
-						log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
-					} else if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes("rear")) {
+						log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
+					} else if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes("rear")) {
 						tmp.push(deviceInfo);
-						log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
+						log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
 					}
 				}
 			} else if (session.facingMode == "user") {
 				for (let i = 0; i !== deviceInfos.length; ++i) {
 					deviceInfo = deviceInfos[i];
-					if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes("front")) {
+					if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes("front")) {
 						tmp.push(deviceInfo);
-						log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
+						log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
 					}
 				}
 			}
 			for (let i = 0; i !== deviceInfos.length; ++i) {
 				deviceInfo = deviceInfos[i];
-				if (!(deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(session.videoDevice))) {
+				if (!(deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes(session.videoDevice))) {
 					if (deviceInfo.deviceId !== session.videoDevice) {
 						tmp.push(deviceInfo);
 					}
@@ -21928,7 +23171,7 @@ function gotDevices(deviceInfos, miconly = false) {
 							} catch (e) {}
 							adMatch[j] = null;
 							break;
-						} else if (deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(adMatch[j])) {
+						} else if (normalizeDeviceLabel(deviceInfo.label).includes(adMatch[j])) {
 							option.checked = true;
 							listele.style.display = "block";
 							option.style.display = "none";
@@ -22115,7 +23358,7 @@ function gotDevicesNew(deviceInfos, miconly = false) {
 					matched.push(deviceInfo);
 				} else {
 					for (var j = 0; j < session.audioDevice.length; j++) {
-						if (deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(session.audioDevice[j])) {
+						if (normalizeDeviceLabel(deviceInfo.label).includes(session.audioDevice[j])) {
 							matched.push(deviceInfo);
 							log("A DEVICE FOUND = " + deviceInfo.label);
 							break;
@@ -22389,7 +23632,7 @@ function gotDevicesNew(deviceInfos, miconly = false) {
 
 					adMatch[j] = null;
 					break;
-				} else if (deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(adMatch[j])) {
+				} else if (normalizeDeviceLabel(deviceInfo.label).includes(adMatch[j])) {
 					option.selected = true;
 					//option.style.display = "none";
 					getById("multiselect1").selected = false;
@@ -22531,13 +23774,13 @@ function gotDevicesNew(deviceInfos, miconly = false) {
 			var tmp3 = [];
 
 			videoInputs.forEach(deviceInfo => {
-				if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().startsWith(session.videoDevice)) {
+				if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).startsWith(session.videoDevice)) {
 					tmp.push(deviceInfo);
 					log("Starts With V DEVICE FOUND");
 				} else if (deviceInfo.deviceId === session.videoDevice) {
 					tmp.push(deviceInfo);
 					log("EXACT V DEVICE FOUND");
-				} else if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(session.videoDevice)) {
+				} else if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes(session.videoDevice)) {
 					tmp2.push(deviceInfo);
 					log("Includes With V DEVICE FOUND");
 				} else {
@@ -22558,24 +23801,24 @@ function gotDevicesNew(deviceInfos, miconly = false) {
 			var tmp = [];
 			if (session.facingMode == "environment") {
 				videoInputs.forEach(deviceInfo => {
-					if (deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes("back")) {
+					if (normalizeDeviceLabel(deviceInfo.label).includes("back")) {
 						tmp.push(deviceInfo);
-						log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
-					} else if (deviceInfo.kind === "videoinput" && deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes("rear")) {
+						log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
+					} else if (deviceInfo.kind === "videoinput" && normalizeDeviceLabel(deviceInfo.label).includes("rear")) {
 						tmp.push(deviceInfo);
-						log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
+						log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
 					}
 				});
 			} else if (session.facingMode == "user") {
 				videoInputs.forEach(deviceInfo => {
-					if (deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes("front")) {
+					if (normalizeDeviceLabel(deviceInfo.label).includes("front")) {
 						tmp.push(deviceInfo);
-						log("V DEVICE FOUND = " + deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase());
+						log("V DEVICE FOUND = " + normalizeDeviceLabel(deviceInfo.label));
 					}
 				});
 			}
 			videoInputs.forEach(deviceInfo => {
-				if (!deviceInfo.label.replace(/[\W]+/g, "_").toLowerCase().includes(session.videoDevice)) {
+				if (!normalizeDeviceLabel(deviceInfo.label).includes(session.videoDevice)) {
 					if (deviceInfo.deviceId !== session.videoDevice) {
 						tmp.push(deviceInfo);
 					}
@@ -23947,32 +25190,39 @@ function applyMirror(mirror) {
 			if (session.mirrored && session.flipped) {
 				session.videoElement.style.transform = "scaleX(-1) scaleY(-1)" + transFlip;
 				session.videoElement.classList.add("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(-1) scaleY(-1)";
 			} else if (session.mirrored) {
 				session.videoElement.style.transform = "scaleX(-1)" + transNorm;
 				session.videoElement.classList.add("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(-1)";
 			} else if (session.flipped) {
 				session.videoElement.style.transform = "scaleY(-1) scaleX(1)" + transFlip;
 				session.videoElement.classList.remove("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(1) scaleY(-11)";
 			} else {
 				session.videoElement.style.transform = "scaleX(1)" + transNorm;
 				session.videoElement.classList.remove("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(1)";
 			}
 		} else {
 			if (session.mirrored && session.flipped) {
 				session.videoElement.style.transform = "scaleX(1) scaleY(-1)" + transFlip;
 				session.videoElement.classList.remove("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(1) scaleY(-1)";
 			} else if (session.mirrored) {
 				session.videoElement.style.transform = "scaleX(1)" + transNorm;
 				session.videoElement.classList.remove("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(1)";
 			} else if (session.flipped) {
 				session.videoElement.style.transform = "scaleY(-1) scaleX(-1)" + transFlip;
 				session.videoElement.classList.add("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(-1) scaleY(-1)";
 			} else {
 				session.videoElement.style.transform = "scaleX(-1)" + transNorm;
 				session.videoElement.classList.add("mirrorControl");
+				session.videoElement.dataset.transform = "scaleX(-1)";
 			}
 		}
-
 		var rotate = 0;
 		if (session.forceRotate !== false) {
 			if (session.rotate) {
@@ -25946,7 +27196,7 @@ async function grabVideo(quality = 0, eleName = "previewWebcam", selector = "sel
 						dataRTC.getSenders().forEach(sender => {
 							// I suppose there could be a race condition between negotiating and updating this. if joining at the same time as changnig streams?
 							if (sender.track && sender.track.kind == "video") {
-								var trk = getMeshcastCanvasTrack(dataRTC);
+								var trk = getWhipOutCanvasTrack(dataRTC);
 								if (session.screenShareState && session.screenshareContentHint && trk.kind === "video") {
 									try {
 										trk.contentHint = session.screenshareContentHint;
@@ -26738,7 +27988,7 @@ function pushOutVideoTrack(track) {
 		session.whipOut.getSenders().forEach(sender => {
 			// I suppose there could be a race condition between negotiating and updating this. if joining at the same time as changnig streams?
 			if (sender.track && sender.track.kind == "video") {
-				errorlog("Replacing track");
+				warnlog("Replacing track");
 				sender.replaceTrack(track); // replace may not be supported by all browsers.  eek.
 				//sender.track.enabled = true;
 				//added = true;
@@ -27901,7 +29151,13 @@ async function press2talk(clean = false) {
 
 				if (session.seeding) {
 					setTimeout(function () {
-						meshcast();
+						if (session.meshcast) {
+							meshcast();
+						} else if (session.whipOutput) {
+							whipOut();
+						} else if (session.whepHost) {
+							whepOut();
+						}
 					}, 1000);
 					return;
 				}
@@ -28391,7 +29647,7 @@ session.postPublish = async function () {
 	session.seeding = true;
 	session.seedStream();
 
-	/* if (session.whipOutput){ // handling these functions within session.seedStream() instead for now. Will move them here later.
+	if (session.whipOutput){ // was handling these functions within session.seedStream(); doing it here now instead. 8-08-2024
 		whipOut();
 	}
 	if (session.meshcast){
@@ -28399,7 +29655,7 @@ session.postPublish = async function () {
 	}
 	if (session.whepHost){
 		whepOut();
-	} */
+	}
 
 	if (session.motionRecord && session.videoElement && !session.motionDetectionInterval) {
 		session.motionDetectionInterval = setTimeout(function () {
@@ -29128,38 +30384,60 @@ function fileShareMessage(fileinfo, idx) {
 	msgTransferList.push(data);
 }
 
-session.shareFile = function (ele, UUID = false, event = false) {
-	// webcam stream is used to generated an SDP
-	if (session.hostedFiles === false) {
-		return;
-	} // disabled
-
-	for (var i = 0; i < ele.files.length; i++) {
-		// changing from a FileList to an Array. Arrays are easier to modify later on
-		ele.files[i].id = session.generateStreamID(8); // can't be too short, else can be brute forced
-		ele.files[i].state = 1;
-		ele.files[i].restricted = UUID;
-		session.hostedFiles.push(ele.files[i]);
-	}
-	log(session.hostedFiles);
-	//for (var in rpcs and pcs .... goes here
-	if (UUID === false) {
-		for (UUID in session.pcs) {
-			session.provideFileList(UUID);
-		}
-		for (UUID in session.rpcs) {
-			if (UUID in session.pcs) {
-				continue;
-			}
-			session.provideFileList(UUID);
-		}
-	} else {
-		session.provideFileList(UUID);
-	}
-	pokeIframeAPI("file-share", true);
-	closeModal();
+session.shareFile = function(ele, UUID, event) {
+    const file = ele.files[0];
+    if (!file) return;
+    
+    try {
+        const fileId = session.generateStreamID(7);
+        
+        session.hostedFiles.push({
+            id: fileId,
+            name: file.name,
+            size: file.size,
+            restricted: UUID || false,
+            file: file  // Store the actual File object
+        });
+        
+        log(session.hostedFiles);
+        
+        // Provide file list to appropriate peers
+        if (UUID === false) {
+            for (let peerUUID in session.pcs) {
+                session.provideFileList(peerUUID);
+            }
+            for (let peerUUID in session.rpcs) {
+                if (!(peerUUID in session.pcs)) {
+                    session.provideFileList(peerUUID);
+                }
+            }
+        } else {
+            session.provideFileList(UUID);
+        }
+        
+        pokeIframeAPI("file-share", true);
+        
+        // Update the file share display
+        updateFileShare();
+        
+        closeModal();
+        
+    } catch(e) {
+        errorlog(e);
+    } finally {
+        // Clear the file input
+        ele.value = '';
+    }
 };
 
+function arrayBufferToString(buffer, encoding, callback) {
+	var blob = new Blob([buffer], { type: "text/plain" });
+	var reader = new FileReader();
+	reader.onload = function (evt) {
+		callback(evt.target.result);
+	};
+	reader.readAsText(blob, encoding);
+}
 session.hostFile = function (ele, event) {
 	// webcam stream is used to generated an SDP
 	log("FILE TRANSFER SETUP");
@@ -29250,8 +30528,10 @@ function updateReshareLink() {
 	if (session.wssSetViaUrl) {
 		if (session.customWSS && session.customWSS !== true) {
 			wss = "&pie=" + session.customWSS;
-		} else {
+		} else if (session.customWSS==true){
 			wss = "&wss=" + session.wss;
+		} else {
+			wss = "&wss2=" + session.wss;
 		}
 	}
 	if (session.audience && !session.audienceToken) {
@@ -35367,8 +36647,14 @@ async function PictureInPicturePageToggle(state = null) {
 				}
 			});
 
+			var pipWindowHead = '<title>Pop-out Window</title>';
+			pipWindowHead += '<link rel="stylesheet" href="./css/variables.css"/>';
+			pipWindowHead += '<link rel="stylesheet" href="./css/main.css"/>';
+			pipWindowHead += '<link rel="stylesheet" href="./css/icons.css"/>';
+			pipWindowHead += '<link rel="stylesheet" href="./css/animations.css"/>';
+			
 			session.pipWindow.document.body.className = "main";
-			session.pipWindow.document.head.innerHTML = '<title>Pop-out Window</title><link rel="stylesheet" href="./main.css">';
+			session.pipWindow.document.head.innerHTML = pipWindowHead;
 			session.pipWindow.document.body.style = document.body.style;
 			session.pipWindow.document.title = "Pop-out Window";
 			session.pipWindow.document.body.append(getById("gridlayout"));
@@ -35470,8 +36756,10 @@ function generateQRPageCallback(hash) {
 		if (session.wssSetViaUrl) {
 			if (session.customWSS && session.customWSS !== true) {
 				wss = "&pie=" + session.customWSS;
-			} else {
+			} else if (session.customWSS==true){
 				wss = "&wss=" + session.wss;
+			} else {
+				wss = "&wss2=" + session.wss;
 			}
 		}
 
@@ -35938,6 +37226,13 @@ function pauseVideo(videoEle, update = true) {
 			copyVideoFrameToClipboard(taskItemInContext, e);
 		} else if (link.getAttribute("data-action") === "SaveFrameToDisk") {
 			saveVideoFrameToDisk(taskItemInContext, e);
+		} else if (link.getAttribute("data-action") === "DrawOnVideo") {
+			if (taskItemInContext.clearDrawOnVideo){
+				taskItemInContext.clearDrawOnVideo();
+				taskItemInContext.clearDrawOnVideo = null;
+			} else {
+				taskItemInContext.clearDrawOnVideo = drawOnThis(taskItemInContext);
+			}
 		} else if (link.getAttribute("data-action") === "ChangeBuffer") {
 			toggleBufferSettings(taskItemInContext.dataset.UUID);
 		} else if (link.getAttribute("data-action") === "Cast") {
@@ -37075,7 +38370,12 @@ function getColorFromName(str, colorseed = false, totalcolors = false) {
 	return out;
 }
 
-function updateClosedCaptions(msg, label, UUID, color = false) {
+function updateClosedCaptions(msg, label, UUID) {
+	
+	if (!session.rpcs[UUID].color && session.ccColored) {
+		session.rpcs[UUID].color = getColorFromName(UUID);
+	}
+	
 	msg.counter = parseInt(msg.counter);
 	var temp = document.createElement("div");
 	temp.innerText = msg.transcript;
@@ -37118,8 +38418,8 @@ function updateClosedCaptions(msg, label, UUID, color = false) {
 		spanOverlay.style.lineHeight = (parseInt(session.labelsize || 100) / 100) * 6 + "vh";
 		spanOverlay.style.margin = (parseInt(session.labelsize || 100) / 100.0) * 0.75 + "vh";
 
-		if (color) {
-			spanOverlay.style.color = color;
+		if (session.rpcs[UUID].color && session.ccColored) {
+			spanOverlay.style.color = session.rpcs[UUID].color;
 		}
 
 		if (msg.isFinal) {
@@ -37150,7 +38450,8 @@ function updateMessages() {
 	if (session.chatbutton === false) {
 		return;
 	}
-	document.getElementById("chatBody").innerHTML = "";
+	const chatBody = document.getElementById("chatBody");
+	chatBody.innerHTML = "";
 	for (var i in messageList) {
 		var time = timeSince(messageList[i].time) || "";
 		time = "<span style='user-select: none;'> - " + time + "</span>";
@@ -37175,7 +38476,7 @@ function updateMessages() {
 			msg.classList.add("outMessage");
 		}
 
-		document.getElementById("chatBody").appendChild(msg);
+		chatBody.appendChild(msg);
 	}
 	showDownloadLinks();
 	for (var i in msgTransferList) {
@@ -37208,16 +38509,17 @@ function updateMessages() {
 		if (msg.id && document.getElementById(msg.id)) {
 			document.getElementById(msg.id).innerHTML = msg.innerHTML;
 		} else {
-			getById("chatBody").appendChild(msg);
+			chatBody.appendChild(msg);
 		}
 	}
 	if (chatUpdateTimeout) {
 		clearInterval(chatUpdateTimeout);
 	}
-	document.getElementById("chatBody").scrollTop = document.getElementById("chatBody").scrollHeight;
-	chatUpdateTimeout = setTimeout(function () {
-		updateMessages();
-	}, 60000);
+    chatBody.scrollTop = chatBody.scrollHeight;
+    if (chatUpdateTimeout) {
+        clearTimeout(chatUpdateTimeout);
+    }
+    chatUpdateTimeout = setTimeout(updateMessages, 60000);
 }
 
 function EnterButtonChat(event) {
@@ -37664,7 +38966,7 @@ function setupGoogleDriveUploader(filename = false, sessionUri = false) {
 		});
 	}
 	function onTokenError(response) {
-		console.log("onTokenError");
+		console.warn(response);
 		if (gdrive.promise.reject) {
 			gdrive.promise.reject();
 		}
@@ -39102,7 +40404,7 @@ async function recordLocalVideo(action = null, videoKbps = false, remote = false
 			getById("recordLocalbutton").innerHTML = '<i class="toggleSize las la-square" ></i>';
 		}
 	} else if (action == "stop") {
-		errorlog("stop not sensible");
+		warnlog("stop not sensible");
 		return;
 	} else {
 		log("action is :" + action);
@@ -39823,6 +41125,9 @@ session.onTrack = function (event, UUID) {
 				if (session.noaudio !== false && !session.noaudio.includes(session.rpcs[UUID].streamID)) {
 					newTracks.splice(index, 1);
 					continue;
+				} else if (session.excludeaudio && session.excludeaudio.includes(session.rpcs[UUID].streamID)) {
+					newTracks.splice(index, 1);
+					continue;
 				} else if (session.rpcs[UUID].settings && session.rpcs[UUID].settings.allowscreenaudio && screenshare) {
 					//newTracks.splice(index,1);
 					continue;
@@ -40075,7 +41380,7 @@ function updateIncomingAudioElement(UUID) {
 	}
 
 	log("updateIncomingAudioElement: " + UUID);
-	if (session.audioEffects === true || session.pushLoudness) {
+	if (session.audioEffects === true || session.pushLoudness || (session.rpcs[UUID].isolatedChannel !== undefined)) {
 		var tracks = session.rpcs[UUID].streamSrc.getAudioTracks();
 		if (tracks.length) {
 			var track = tracks[0];
@@ -40208,6 +41513,13 @@ function addAudioPipeline(UUID, track) {
 
 		var screwedUp = false;
 		session.rpcs[UUID].inboundAudioPipeline[trackid].destination = false;
+		
+		if (session.rpcs[UUID].isolatedChannel !== undefined) {
+			log("Isolating channel: " + session.rpcs[UUID].isolatedChannel);
+			session.rpcs[UUID].inboundAudioPipeline[trackid].destination = session.audioCtx.createMediaStreamDestination();
+			source = isolateChannel(source, session.rpcs[UUID].isolatedChannel);
+			screwedUp = true;
+		}
 
 		if (session.sync !== false) {
 			log("adding a delay node to audio");
@@ -40270,7 +41582,7 @@ function addAudioPipeline(UUID, track) {
 		} else if (session.rpcs[UUID].videoElement && session.rpcs[UUID].videoElement.manualSink) {
 			screwedUp = true; // added June-3-22 to allow for custom outputs to different audio output destinations.
 		}
-
+		
 		if (screwedUp) {
 			warnlog("screwedUp mode activated. dun dun");
 			if (session.rpcs[UUID].inboundAudioPipeline[trackid].destination === false) {
@@ -40446,7 +41758,10 @@ function setupGuestLabelControl(UUID) {
 				data.changeLabel = true;
 				data.value = newlabel;
 				session.sendRequest(data, data.UUID);
+				
+				pokeAPI("details", getDetailedState(session.rpcs[UUID].streamID));
 			}
+			
 		};
 	}
 	updateAriaLabel(UUID);
@@ -40619,6 +41934,7 @@ function changeGroupDirector(ele, state = null) {
 		session.sendMessage({ group: false });
 	}
 	if (change) {
+		updateMixer();
 		pokeIframeAPI("group-set-updated", session.group);
 	}
 
@@ -40744,6 +42060,7 @@ function changeGroupDirectorAPI(group, state = null, update = true) {
 		}
 	}
 	if (changed) {
+		updateMixer();
 		pokeIframeAPI("group-set-updated", session.group);
 	}
 
@@ -40784,6 +42101,7 @@ function changeGroupViewDirectorAPI(group, state = null) {
 	}
 
 	if (changed) {
+		updateMixer();
 		pokeIframeAPI("group-view-set-updated", session.groupView);
 	}
 
@@ -40800,30 +42118,36 @@ function changeGroup(ele, state = null) {
 	var group = ele.dataset.group;
 
 	var index = session.rpcs[ele.dataset.UUID].group.indexOf(group);
+	
+	var changed = false;
 
 	if (state === true) {
 		ele.classList.add("pressed");
 		ele.ariaPressed = "true";
 		if (index === -1) {
 			session.rpcs[ele.dataset.UUID].group.push(group);
+			changed = true;
 		}
 	} else if (state === false) {
 		ele.classList.remove("pressed");
 		ele.ariaPressed = "false";
 		if (index > -1) {
 			session.rpcs[ele.dataset.UUID].group.splice(index, 1);
+			changed = true;
 		}
 	} else if (ele.classList.contains("pressed")) {
 		ele.classList.remove("pressed");
 		ele.ariaPressed = "false";
 		if (index > -1) {
 			session.rpcs[ele.dataset.UUID].group.splice(index, 1);
+			changed = true;
 		}
 	} else {
 		ele.classList.add("pressed");
 		ele.ariaPressed = "true";
 		if (index === -1) {
 			session.rpcs[ele.dataset.UUID].group.push(group);
+			changed = true;
 		}
 	}
 	if (session.rpcs[ele.dataset.UUID].group.length) {
@@ -40831,7 +42155,11 @@ function changeGroup(ele, state = null) {
 	} else {
 		session.sendRequest({ group: false }, ele.dataset.UUID);
 	}
-	syncDirectorState(ele);
+	syncDirectorState(ele); 
+	
+	if (changed) {
+		updateMixer();
+	}
 
 	if (session.rpcs[ele.dataset.UUID].group.indexOf(group) === -1) {
 		return false;
@@ -41311,7 +42639,7 @@ function audioMeterGuest(mediaStreamSource, UUID, trackid) {
 				} else if (session.meterStyle == 4) {
 					return;
 				}
-			} else if (session.scene !== false) {
+			} else if (session.scene !== false) { 
 				// if a scene, cancel
 				return;
 			} else if (session.audioMeterGuest === false) {
@@ -42374,32 +43702,46 @@ function configureWhipOutSDP(description) {
 	} else {
 		configs = { stereo: 0 };
 	}
+	
+	if (session.whipOutAudioCodec === "pcm") {
+		if (session.audioInputChannels && session.audioInputChannels == 1) {
+			description.sdp = CodecsHandler.modifyDescPCM(description.sdp, session.micSampleRate || 48000, false); // mono
+		} else if (session.stereo) {
+			description.sdp = CodecsHandler.modifyDescPCM(description.sdp, session.micSampleRate || 48000, true); // mono
+		} else {
+			description.sdp = CodecsHandler.modifyDescPCM(description.sdp, session.micSampleRate || 48000, false);
+		}
+	} else {
+		if (session.whipOutAudioCodec){
+			description.sdp = CodecsHandler.preferAudioCodec(description.sdp, session.whipOutAudioCodec, session.predAudio, session.pfecAudio); // "red" codec
+		}
+	
+		if (session.noFEC !== null) {
+			configs.useinbandfec = session.noFEC ? 0 : 1;
+		}
+		if (session.maxptime !== false) {
+			configs.maxptime = session.maxptime;
+		}
+		if (session.minptime !== false) {
+			configs.minptime = session.minptime;
+		}
+		if (session.ptime !== false) {
+			configs.ptime = session.ptime;
+		}
+		if (session.dtx !== false) {
+			configs.dtx = session.dtx; // "usedtx", if no loud audio, stops sending audio for 400ms. default.
+		}
 
-	if (session.noFEC !== null) {
-		configs.useinbandfec = session.noFEC ? 0 : 1;
-	}
-	if (session.maxptime !== false) {
-		configs.maxptime = session.maxptime;
-	}
-	if (session.minptime !== false) {
-		configs.minptime = session.minptime;
-	}
-	if (session.ptime !== false) {
-		configs.ptime = session.ptime;
-	}
-	if (session.dtx !== false) {
-		configs.dtx = session.dtx; // "usedtx", if no loud audio, stops sending audio for 400ms. default.
-	}
+		if (session.whipOutAudioBitrate) {
+			configs.maxaveragebitrate = session.whipOutAudioBitrate * 1024;
+			configs.cbr = session.cbr;
+		}
 
-	if (session.whipOutAudioBitrate) {
-		configs.maxaveragebitrate = session.whipOutAudioBitrate * 1024;
-		configs.cbr = session.cbr;
-	}
-
-	if (Object.keys(configs).length) {
-		log("Processing sdp of type: " + description.type + " ...");
-		log(configs);
-		description.sdp = CodecsHandler.setOpusAttributes(description.sdp, configs, true);
+		if (Object.keys(configs).length) {
+			log("Processing sdp of type: " + description.type + " ...");
+			log(configs);
+			description.sdp = CodecsHandler.setOpusAttributes(description.sdp, configs, true);
+		}
 	}
 
 	if (iOS || iPad) {
@@ -42520,8 +43862,52 @@ function completeLocationURL(originalURL, locationURL) {
 	}
 }
 
+
+function getWhipOutCanvasTrack(baseRTC = session.whipOut) {
+	if (!baseRTC) {
+		errorlog("Meshcast/WHIP not connected; cant' create canvas for it");
+	}
+	if (!baseRTC.canvas) {
+		baseRTC.canvas = document.createElement("canvas");
+		baseRTC.canvas.width = 320;
+		baseRTC.canvas.height = 180;
+	}
+	if (!baseRTC.ctx) {
+		baseRTC.ctx = baseRTC.canvas.getContext("2d", { alpha: false });
+		baseRTC.ctx.fillStyle = "#000";
+		baseRTC.ctx.fillRect(0, 0, baseRTC.canvas.width, baseRTC.canvas.height);
+	}
+
+	if (!baseRTC.canvasStream) {
+		(function loop() {
+			baseRTC.ctx.fillRect(0, 0, baseRTC.canvas.width, baseRTC.canvas.height);
+			setTimeout(loop, 250); // drawing at 30fps
+		})();
+		try {
+			baseRTC.ctx.fillRect(0, 0, baseRTC.canvas.width, baseRTC.canvas.height);
+			baseRTC.canvasStream = baseRTC.canvas.captureStream(4);
+			baseRTC.ctx.fillRect(0, 0, baseRTC.canvas.width, baseRTC.canvas.height);
+		} catch(e){
+			errorlog("Error creating whip output placeholder track");
+		}
+	}
+	var tracks = baseRTC.canvasStream.getVideoTracks();
+	if (tracks.length) {
+		return tracks[0]
+	}
+	errorlog("Meschast canvas not working");
+	return false;
+}
+
+
 function whipOut() {
 	log("whipOut");
+	
+	if (!session.videoElement || !session.videoElement.srcObject) {
+		log("no videoElement yet created; can't do whip out until then");
+		return false;
+	}
+	
 	var candidates = [];
 	var codec = false;
 	var keyframe = false;
@@ -42548,9 +43934,9 @@ function whipOut() {
 			session.whipOut.stats = {};
 			session.whipOut.maxBandwidth = null; // based on max available bitrate
 			session.whipOut.scale = false;
-
 			session.whipOut.offerToReceiveAudio = false;
 			session.whipOut.offerToReceiveVideo = false;
+			session.whipOut.keyframeTimeout = null;
 		} catch (err) {
 			errorlog(err);
 			if (!session.cleanOutput) {
@@ -42609,24 +43995,23 @@ function whipOut() {
 			if (session.videoElement && session.videoElement.srcObject) {
 				tracks = session.videoElement.srcObject.getVideoTracks();
 			}
-
-			//if (!tracks || !tracks.length){
-			//	tracks = getMeshcastCanvasTrack();
-			//} else {
-			// 	tracks = tracks[0];
-			//}
-			if (tracks && tracks.length) {
-				tracks = tracks[0];
-
-				if (session.screenShareState && session.screenshareContentHint && tracks.kind === "video") {
+			
+			if (!tracks || !tracks.length){
+				var track = getWhipOutCanvasTrack(session.whipOut);
+			} else {
+			 	var track = tracks[0];
+			}
+			
+			if (track) { // it's actually just "track" now.
+				if (session.screenShareState && session.screenshareContentHint && track.kind === "video") {
 					try {
-						tracks.contentHint = session.screenshareContentHint;
+						track.contentHint = session.screenshareContentHint;
 					} catch (e) {
 						errorlog(e);
 					}
-				} else if (session.contentHint && tracks.kind === "video") {
+				} else if (session.contentHint && track.kind === "video") {
 					try {
-						tracks.contentHint = session.contentHint;
+						track.contentHint = session.contentHint;
 					} catch (e) {
 						errorlog(e);
 					}
@@ -42652,7 +44037,7 @@ function whipOut() {
 							//}
 							var transceiver = false;
 							try {
-								transceiver = session.whipOut.addTransceiver(tracks, transceiverSetup);
+								transceiver = session.whipOut.addTransceiver(track, transceiverSetup);
 								//transceiver.setCodecPreferences(svcCodecPref);
 							} catch (e) {
 								errorlog(e);
@@ -42664,60 +44049,65 @@ function whipOut() {
 										streams: [session.videoElement.srcObject],
 										direction: "sendonly"
 									};
-									session.whipOut.addTransceiver(tracks, transceiverSetup);
+									session.whipOut.addTransceiver(track, transceiverSetup);
 								} else {
 									warnUser("Could not configure WHIP output with specific codec settings.", 5000);
 								}
 							}
 						} else {
-							session.whipOut.addTransceiver(tracks, transceiverSetup);
+							session.whipOut.addTransceiver(track, transceiverSetup);
 						}
 					} else {
-						session.whipOut.addTransceiver(tracks, transceiverSetup);
+						session.whipOut.addTransceiver(track, transceiverSetup);
 					}
 				} catch (e) {
 					errorlog(e);
 					try {
-						session.whipOut.addTrack(tracks);
+						session.whipOut.addTrack(track);
 					} catch (e) {
 						errorlog(e);
 					}
 				}
-			}
+			
 
-			if (session.encodedInsertableStreams) {
-				// not supported by most servers
-				const senders = session.whipOut.getSenders();
-				for (const sender of senders) {
-					try {
-						setupSenderTransform(sender);
-					} catch (e) {
-						errorlog(e);
-					}
-				}
-			}
-
-			session.whipOut.onnegotiationneeded = publish; // bug: https://groups.google.com/forum/#!topic/discuss-webrtc/3-TmyjQ2SeE
-
-			session.whipOut.onicecandidate = function (event) {
-				//event
-				if (event.candidate == null) {
-					log("END OF ICE CANDIDATES");
-					return;
-				}
-				//log(event.candidate);
-				try {
-					if (session.localNetworkOnly) {
-						if (!filterIceLAN(event.candidate)) {
-							return;
+				if (session.encodedInsertableStreams) {
+					// not supported by most servers
+					const senders = session.whipOut.getSenders();
+					for (const sender of senders) {
+						try {
+							setupSenderTransform(sender);
+						} catch (e) {
+							errorlog(e);
 						}
 					}
-				} catch (e) {
-					errorlog(e);
 				}
 
-				candidates.push(event.candidate);
-			};
+				session.whipOut.onnegotiationneeded = publish; // bug: https://groups.google.com/forum/#!topic/discuss-webrtc/3-TmyjQ2SeE
+
+				session.whipOut.onicecandidate = function (event) {
+					//event
+					if (event.candidate == null) {
+						log("END OF ICE CANDIDATES");
+						return;
+					}
+					//log(event.candidate);
+					try {
+						if (session.localNetworkOnly) {
+							if (!filterIceLAN(event.candidate)) {
+								return;
+							}
+						}
+					} catch (e) {
+						errorlog(e);
+					}
+
+					candidates.push(event.candidate);
+				};
+			
+			} else {
+				console.log(tracks, track);
+				errorlog("No audio / video track found; can't publish to WHIP");
+			}
 		} catch (e) {
 			errorlog(e);
 		}
@@ -42908,10 +44298,12 @@ function whipOut() {
 								warnlog("Content: " + content.length);
 								//if (content){
 								// warnlog("SENDING TRICKLE"); //.. I should, but I'm not, since most sites don't support it still.
-								if (!keyframe) {
-									keyframe = setInterval(function () {
+								
+								if (session.whipOutKeyframe) {
+									clearTimeout(session.whipOut.keyframeTimeout);
+									session.whipOut.keyframeTimeout = setInterval(function () {
 										GOP();
-									}, 6000); // ensure GOP no longer than 6s
+									}, session.whipOutKeyframe); // ensure GOP no longer than 6s
 								}
 								session.whipOutSetScale();
 
@@ -42935,10 +44327,11 @@ function whipOut() {
 								if (WHELPlaybackURL) {
 									log("Since we have the WHEP URL, we will assume its desired to forward it on, even if it may not work.");
 									try {
-										if (!keyframe) {
-											keyframe = setInterval(function () {
+										if (session.whipOutKeyframe) {
+											clearTimeout(session.whipOut.keyframeTimeout);
+											session.whipOut.keyframeTimeout = setInterval(function () {
 												GOP();
-											}, 6000); // ensure GOP no longer than 6s
+											}, session.whipOutKeyframe); // ensure GOP no longer than 6s
 										}
 										session.whipOutSetScale();
 									} catch (e) {
@@ -43139,6 +44532,10 @@ function whipClient() {
 							socket.send(JSON.stringify(ret));
 						}
 					}
+				} else if (data.type === "candidate") {
+					if (data.candidate && data.streamID) {
+						await handleIncomingIceCandidate(data);
+					}
 				} else if (data.type == "delete") {
 					warnlog("WHIP publisher is actively disconnecting");
 					// session.closeRPC(i, true);
@@ -43157,111 +44554,136 @@ function whipClient() {
 	}
 	connect();
 }
-
 async function processWhipIn(data) {
-	// LISTEN FOR REMOTE WHIP (from OBS?)
-	var msg = {};
-	msg.description = {};
-	msg.description.type = "offer";
-	msg.description.sdp = data.sdp;
-	// msg.session = session.generateRandomString(5);
-	var UUID = session.generateRandomString(25); // fake
-	msg.UUID = UUID;
-
-	if (data.streamID) {
-		msg.streamID = data.streamID;
-	} else {
-		msg.streamID = session.generateRandomString(15); // fake
+    // LISTEN FOR REMOTE WHIP (from OBS?)
+    var msg = {};
+    msg.description = {};
+    msg.description.type = "offer";
+    msg.description.sdp = data.sdp;
+    var UUID = session.generateRandomString(25); // fake
+    msg.UUID = UUID;
+	
+	if (session.forceNoAudioWhipIn || session.forceNoVideoWhipIn){
+		try {
+			log(msg.description.sdp+"");
+			msg.description.sdp = CodecsHandler.modifySdp(msg.description.sdp, session.forceNoAudioWhipIn, session.forceNoVideoWhipIn);
+		} catch(e){
+			errorlog(e);
+		}
 	}
-	log("setupIncoming");
-	await session.setupIncoming(msg); // could end up setting up the peer the wrong way.
+    if (data.streamID) {
+        msg.streamID = data.streamID;
+    } else {
+        msg.streamID = session.generateRandomString(15); // fake
+    }
 
-	try {
-		//	session.rpcs[UUID].addTransceiver('video', {direction: 'recvonly'});
-		//	session.rpcs[UUID].addTransceiver('audio', {direction: 'recvonly'});
-	} catch (e) {
-		errorlog(e);
+    log("setupIncoming");
+    await session.setupIncoming(msg); // could end up setting up the peer the wrong way.
+
+    session.rpcs[UUID].whip = true;
+    var callback = null;
+    var promise = new Promise((resolve, reject) => {
+        callback = resolve;
+    });
+    session.rpcs[UUID].whipCallback = callback;
+
+    var callback2 = null;
+    var promise2 = new Promise((resolve, reject) => {
+        callback2 = resolve;
+    });
+    session.rpcs[UUID].whipCallback2 = callback2;
+
+    log("CONNECT PEER");
+    session.connectPeer(msg);
+    log("CONNECT PEER DONE");
+
+    log("ICE BUNDLE PROMISE");
+    setTimeout(
+        function (UUID) {
+            if (session.rpcs[UUID].whipCallback2) {
+                session.rpcs[UUID].whipCallback2([...session.rpcs[UUID].iceBundle]);
+                clearTimeout(session.rpcs[UUID].iceTimer);
+                session.rpcs[UUID].iceTimer = null;
+                session.rpcs[UUID].iceBundle = [];
+                session.rpcs[UUID].whipCallback2 = null;
+            }
+        },
+        session.whepWait,
+        UUID
+    );
+
+    var iceBundle = await promise2; // waiting for ICE GATHER COMPLETE; default 2 second. change with &whipwait=2000
+
+    clearTimeout(session.rpcs[UUID].iceTimer);
+    session.rpcs[UUID].iceTimer = null;
+    session.rpcs[UUID].whipCallback2 = null;
+
+    log("ICE BUNDLE DONE");
+    log(iceBundle);
+
+    await promise;
+    session.rpcs[UUID].whipCallback = null;
+
+    sdpAnswer = session.rpcs[UUID].localDescription.sdp;
+	
+    //iceBundle.forEach(ice => { // not needed, since the localDescription has it embedded already, since we waited
+    //    sdpAnswer += `a=${ice.candidate}\r\n`;
+    //});
+	
+	/* 	
+	if (true){ // this code tries to force the TURN server into use, but it's not working that I can see.
+	  
+	  const sdpLines = sdpAnswer.split('\r\n');
+	  const modifiedLines = [];
+	  let mediaSection = 0;
+	  let candidateAdded = false;
+	  let audioPort = null;
+
+	  for (let line of sdpLines) {
+		if (line.startsWith('m=')) {
+		  mediaSection++;
+		  if (mediaSection === 1) {
+			// Extract audio port
+			audioPort = line.split(' ')[1];
+		  } else if (mediaSection === 2 && audioPort) {
+			// Set video port to match audio port
+			line = `m=video ${audioPort} UDP/TLS/RTP/SAVPF 96`;
+		  }
+		}
+
+		if (line.startsWith('c=')) {
+		  line = `c=IN IP4 51.222.12.223`;
+		}
+
+		if (line.startsWith('a=candidate:') && !candidateAdded) {
+		  line = `a=candidate:1 1 UDP 2 51.222.12.223 3478 typ relay raddr 0.0.0.0 rport 0`;
+		  candidateAdded = true;
+		}
+
+		
+
+		modifiedLines.push(line);
+	  }
+
+	  return modifiedLines.join('\r\n');
 	}
+	 */
 
-	session.rpcs[UUID].whip = true;
-	var callback = null;
-	var promise = new Promise((resolve, reject) => {
-		callback = resolve;
-	});
-	session.rpcs[UUID].whipCallback = callback;
-
-	var callback2 = null;
-	var promise2 = new Promise((resolve, reject) => {
-		callback2 = resolve;
-	});
-	session.rpcs[UUID].whipCallback2 = callback2;
-
-	log("CONNECT PEEER");
-	session.connectPeer(msg);
-	log("CONNECT PEEER DONE");
-
-	if (!session.manual || !session.director) {
-		window.onresize = updateMixer;
-		window.onorientationchange = function () {
-			setTimeout(updateMixer, 200);
-		};
-	}
-
-	if (session.roomid === false && !session.permaid) {
-		getById("header").classList.add("hidden");
-	}
-
-	log("ICE BUNDLE PROMISE");
-	setTimeout(
-		function (UUID) {
-			if (session.rpcs[UUID].whipCallback2) {
-				session.rpcs[UUID].whipCallback2([...session.rpcs[UUID].iceBundle]);
-				clearTimeout(session.rpcs[UUID].iceTimer);
-				session.rpcs[UUID].iceTimer = null;
-				session.rpcs[UUID].iceBundle = [];
-				session.rpcs[UUID].whipCallback2 = null;
-			}
-		},
-		session.whepWait,
-		UUID
-	); // session.whepWait could be renamed at some point to session.whipWait I guess
-
-	var iceBundle = await promise2; // waiting for ICE GATHER COMPLETE
-
-	clearTimeout(session.rpcs[UUID].iceTimer);
-	session.rpcs[UUID].iceTimer = null;
-
-	session.rpcs[UUID].whipCallback2 = null;
-
-	log("ICE BUNDLE DONE");
-	log(iceBundle);
-
-	await promise;
-	session.rpcs[UUID].whipCallback = null;
-
-	sdpAnswer = session.rpcs[UUID].localDescription.sdp;
-
-	// sdpAnswer = processSDPFromServer(sdpAnswer); // the sending server doesn't give a damn if we're in stereo or not.
-
-	//var insertIce = "";
-	//iceBundle.forEach(ice=>{
-	//	if (ice.candidate){
-	//		insertIce += "a="+ice.candidate+"\r\n";
-	//	}
-	//});
-	//sdpAnswer = sdpAnswer.replace("a=ice-ufrag", insertIce+"a=ice-ufrag");
-
-	//if (sdpAnswer.includes("sendrecv")){
-	//	errorlog("Should not include sendrecv");
-	//	sdpAnswer = sdpAnswer.replace("a=sendrecv","a=recvonly");
-	//	sdpAnswer = sdpAnswer.replace("v=sendrecv","v=recvonly");
-	//}
-
-	log("completed");
-
-	return sdpAnswer; // return SDP answer for the remote WHIP request
+    return sdpAnswer; // return SDP answer for the remote WHIP request
 }
-
+async function handleIncomingIceCandidate(data) {
+    const UUID = Object.keys(session.rpcs).find(uuid => session.rpcs[uuid].streamID === data.streamID);
+    if (UUID && session.rpcs[UUID]) {
+        try {
+            await session.rpcs[UUID].addIceCandidate(new RTCIceCandidate(data.candidate));
+            log("Added incoming ICE candidate for stream: " + data.streamID);
+        } catch (e) {
+            errorlog("Error adding incoming ICE candidate: ", e);
+        }
+    } else {
+        warnlog("Received ICE candidate for unknown stream: " + data.streamID);
+    }
+}
 function processSDPFromServer(sdp) {
 	// not the description package; just the sdp
 	try {
@@ -43346,6 +44768,7 @@ async function whepIn(whepInput = false, whepInputToken = false, UUID = false) {
 				session.rpcs[UUID] = {};
 				session.rpcs[UUID].stats = {};
 				session.rpcs[UUID].allowGraphs = false;
+				session.rpcs[UUID].allowDrawing = false;
 				session.rpcs[UUID].inboundAudioPipeline = {};
 				session.rpcs[UUID].channelOffset = false;
 				session.rpcs[UUID].channelWidth = false;
@@ -43393,6 +44816,8 @@ async function whepIn(whepInput = false, whepInputToken = false, UUID = false) {
 			}
 			if (session.noaudio !== false && !session.noaudio.includes(session.rpcs[UUID].streamID)) {
 				audio = false;
+			} else if (session.excludeaudio && session.excludeaudio.includes(session.rpcs[UUID].streamID)) {
+				audio = false;	
 			} else if (session.rpcs[UUID].settings && !session.rpcs[UUID].settings.audio) {
 				audio = false;
 			}
@@ -43400,6 +44825,10 @@ async function whepIn(whepInput = false, whepInputToken = false, UUID = false) {
 			if (!audio && !video) {
 				errorlog("We will not request the whep source as no audio or video is requested");
 				return;
+			}
+			
+			if (video){
+				disableQualityDirector(UUID);
 			}
 
 			if (!session.manual || !session.director) {
@@ -43424,6 +44853,39 @@ async function whepIn(whepInput = false, whepInputToken = false, UUID = false) {
 				warnlog("TRACK INBOUND!");
 				warnlog(event);
 				session.onTrack(event, UUID);
+				console.log("..");
+				let track = null;
+				if (event.streams && event.streams[0]) {
+					try {
+						let newStream = event.streams[0];
+						track = newStream.getVideoTracks()[0];
+					} catch(e){}
+				} else if (event.track && event.track.kind && (event.track.kind=="video")) {
+					track = event.track
+				}
+				if (track){
+					console.log(track);
+					setTimeout(function(track,UUID){
+						if (session.rpcs[UUID] && track && track.id){
+							if (session.rpcs[UUID].stats && session.rpcs[UUID].stats[track.id] && ("keyFramesRequested_pli" in session.rpcs[UUID].stats[track.id])){
+								console.log("I need to request a keyframe. keyFramesRequested_pli: "+session.rpcs[UUID].stats[track.id].keyFramesRequested_pli);
+							}
+						}
+					},6100,track,UUID); // 3 seconds for stats to update + 2 second for keyframe to trigger + 1100 for delay
+				}
+				
+				// IF track is a video..
+				// wait to see if a keyframe is received within 2 seconds
+				// if not keyframe, request one.
+				// session.whipOutKeyframeOnNewViewer
+				// session.rpcs[UUID].stats[trackID].keyFramesRequested_pli = stat.pliCount || 0;
+				/* if ("pliCount" in stat) {
+					data.stats.total_pli_count = stat.pliCount;
+				}
+
+				if ("keyFramesEncoded" in stat) {
+					data.stats.total_key_frames_encoded = stat.keyFramesEncoded;
+				} */
 			};
 		} catch (err) {
 			errorlog(err);
@@ -44074,9 +45536,7 @@ function oscClient() {
 
 				if ("value" in data) {
 					if ("action" in data && data.action == "layout") {
-						try {
-							data.value = JSON.parse(data.value) || data.value;
-						} catch (e) {}
+						data.value = safelyDecodeValue(data.value);
 					}
 				}
 
@@ -44092,6 +45552,26 @@ function oscClient() {
 		});
 	}
 	connect();
+}
+
+function safelyDecodeValue(value) { // since the layout can be a number, json, or base64 encoded json
+    if (Number.isInteger(Number(value))) {
+        return parseInt(value, 10);
+    }
+    try {
+        return JSON.parse(value);  // Try parsing as JSON
+    } catch (e) {
+    }
+    try {
+        const decodedValue = atob(value); // Try decoding as base64 instead
+        try {
+            return JSON.parse(decodedValue); // Try parsing as JSON now that we did b64 decoding
+        } catch (e) {
+            return decodedValue;
+        }
+    } catch (e) {
+        return value;
+    }
 }
 
 function setupCommands() {
@@ -44400,6 +45880,40 @@ function setupCommands() {
 	commands.highlight = function (value = null, value2 = null) {
 		return commands.soloVideo(value, value2);
 	};
+	
+	commands.activeSpeaker = function (value = null, value2 = null) {
+		var res = {};
+		res.previous = session.activeSpeaker;
+		if ((value && (value == "toggle" || value=="null")) || (value===null)) {
+			res.action = "toggle";
+			if (session.activeSpeaker){
+				session.activeSpeaker = false;
+			} else {
+				session.activeSpeaker = urlParams.get("activespeaker") || urlParams.get("speakerview") || urlParams.get("sas") || 1;
+			}
+		} else if (value && parseInt(value)){
+			session.activeSpeaker = parseInt(value) || 1;
+		} else {
+			session.activeSpeaker = false;
+		}
+		if (session.activeSpeaker && !session.activeSpeakerInterval){
+			if (!session.audioEffects){
+				session.audioEffects = true;
+				for (var UUID in session.rpcs) {
+					updateIncomingAudioElement(UUID);
+				}
+			}
+			activeSpeaker(false);
+			session.activeSpeakerInterval = setInterval(function () {
+				activeSpeaker(false);
+			}, 100);
+		} else {
+			updateMixer();
+		}
+		res.current = session.activeSpeaker;
+		res.value = value;
+		return res;
+	};
 
 	commands.setBufferDelay = function (value = null, value2 = null) {
 		let delay = parseInt(value) || 0;
@@ -44439,6 +45953,9 @@ function setupCommands() {
 	};
 
 	commands.layout = function (value = null, value2 = null) {
+		let response = {};
+		response.input = value;
+		
 		try {
 			if (parseInt(value) == value) {
 				value = parseInt(value);
@@ -44447,29 +45964,51 @@ function setupCommands() {
 				} else {
 					value -= 1;
 				}
-			} else if (typeof value === "object") {
-				session.layout = value;
-				pokeIframeAPI("layout-updated", session.layout);
+				response.index = value;
+			} else if (checkType(value) === "Array") {
+				
 				if (session.director) {
 					var combined = {};
-					for (var i = 0; i < session.layout.length; i++) {
-						if (!session.layout[i]) {
+					for (var i = 0; i < value.length; i++) {
+						if (!value[i]) {
 							continue;
 						}
-						if (!("slot" in session.layout[i])) {
+						if (!("slot" in value[i])) {
 							continue;
 						}
-						var slot = document.querySelector("div.slotsbar[data-slot='" + (parseInt(session.layout[i].slot) + 1) + "']");
+						var slot = document.querySelector("div.slotsbar[data-slot='" + (parseInt(value[i].slot) + 1) + "']");
 						if (!slot) {
 							continue;
 						}
 						var streamID = slot.dataset.sid;
-						combined[streamID] = session.layout[i];
+						combined[streamID] = value[i];
 					}
-					issueLayout(combined, "0");
+					session.layout = combined;
+					issueLayout(session.layout, "0");
+					response.issued = true;
+					response.scene =  "0";
+					pokeIframeAPI("layout-updated", value);
 				}
+				response.type = 1;
 				updateMixer();
-				return true;
+				response.combined_layout = session.layout;
+				var temp = previousDebug;
+				previousDebug = response
+				return {response:response, previous:temp}
+			} else if (checkType(value) === "Object") {
+				if (session.director) {
+					session.layout = value;
+					issueLayout(session.layout, "0");
+					response.issued = true;
+					response.scene =  "0";
+					pokeIframeAPI("layout-updated", session.layout);
+				}
+				response.type = 2;
+				updateMixer();
+				response.layout = session.layout;
+				var temp = previousDebug;
+				previousDebug = response
+				return {response:response, previous:temp}
 			}
 
 			if (value === null) {
@@ -44477,65 +46016,102 @@ function setupCommands() {
 				pokeIframeAPI("layout-updated", session.layout);
 				pokeIframeAPI("layout-index", 0);
 				if (session.director) {
-					issueLayout(false, "0");
+					issueLayout(session.layout, "0");
+					response.issued = true;
+					response.scene =  "0";
+					
 				}
+				response.type = 3;
+				response.layout = session.layout;
 				updateMixer();
-				return true;
+				var temp = previousDebug;
+				previousDebug = response
+				return {response:response, previous:temp}
 			} else if (value === false) {
 				session.layout = false;
 				pokeIframeAPI("layout-updated", session.layout);
 				pokeIframeAPI("layout-index", 0);
 				if (session.director) {
-					issueLayout(false, "0");
+					issueLayout(session.layout, "0");
+					response.issued = true;
+					response.scene =  "0";
 				}
+				response.layout = session.layout;
+				response.type = 3;
 				updateMixer();
-				return true;
+				var temp = previousDebug;
+				previousDebug = response
+				return {response:response, previous:temp}
 			} else if (session.layouts && session.layouts[value]) {
 				try {
-					console.log(session.layouts);
-					session.layout = session.layouts[value];
-					pokeIframeAPI("layout-updated", session.layout);
-					pokeIframeAPI("layout-index", value + 1);
+					log(session.layouts);
+					var temp = session.layouts[value];
+					response.type = 4;
 					if (session.director) {
 						var combined = {};
-						for (var i = 0; i < session.layout.length; i++) {
-							if (!session.layout[i]) {
+						for (var i = 0; i < temp.length; i++) {
+							if (!temp[i]) {
 								continue;
 							}
-							if (!("slot" in session.layout[i])) {
+							if (!("slot" in temp[i])) {
 								continue;
 							}
-							var slot = document.querySelector("div.slotsbar[data-slot='" + (parseInt(session.layout[i].slot) + 1) + "']") || false;
+							var slot = document.querySelector("div.slotsbar[data-slot='" + (parseInt(temp[i].slot) + 1) + "']") || false;
 							if (!slot) {
-								console.error("Slot target not found?");
+								warnlog("Slot target not found?");
 								continue;
 							}
 							var streamID = slot.dataset.sid;
-							combined[streamID] = session.layout[i];
+							combined[streamID] = temp[i];
 						}
 						session.layout = combined;
-						console.log("issuing layout:");
-						console.log(session.layout);
+						log("issuing layout:");
+						log(session.layout);
 						issueLayout(session.layout, "0");
+						response.issued = true;
+						response.scene =  "0";
+						response.combined_layout = session.layout;
+						
+						pokeIframeAPI("layout-updated", session.layout);
+						pokeIframeAPI("layout-index", value + 1);
 					}
 				} catch (e) {
-					console.error(e);
+					errorlog(e);
+					response.error = e.message
 				}
 				updateMixer();
-				return true;
+				temp = previousDebug;
+				previousDebug = response
+				return {response:response, previous:temp}
 			} else {
-				console.error("no layout found");
-				console.log(session.layouts);
-				return false;
+				errorlog("no layout found");
+				log(session.layouts);
+				var temp = previousDebug;
+				previousDebug = response
+				return {response:response, previous:temp}
 			}
 		} catch (e) {
+			response.error = e.message
 			errorlog(e);
 		}
+		var temp = previousDebug;
+		previousDebug = response
+		return {response:response, previous:temp}
 	};
 	return commands;
 }
 var Commands = setupCommands();
+var previousDebug = {};
 
+function checkType(value) {
+  if (Array.isArray(value)) {
+    return 'Array';
+  } else if (typeof value === 'object' && value !== null) {
+    return 'Object';
+  } else {
+    return 'Neither an Array nor an Object';
+  }
+}
 async function processMessage(data) {
 	// api.vdo.ninja/apikey/action/value
 	try {
@@ -45515,6 +47091,12 @@ async function createSecondStream2(UUID) {
 		session.pcs[UUID + "_screen"].solo = null;
 		session.pcs[UUID + "_screen"].allowVideo = session.pcs[UUID].allowScreenVideo;
 		session.pcs[UUID + "_screen"].allowAudio = session.pcs[UUID].allowScreenAudio;
+		session.pcs[UUID + "_screen"].allowDrawing = session.pcs[UUID].allowDrawing;
+		if (session.pcs[UUID + "_screen"].allowDrawing){
+			if (session.screenShareElement && session.screenShareElement.syncDrawOnVideo){
+				session.screenShareElement.syncDrawOnVideo();
+			}
+		}
 		session.pcs[UUID + "_screen"].layout = null;
 		session.pcs[UUID + "_screen"].obsState = {};
 		session.pcs[UUID + "_screen"].obsState.visibility = null;
@@ -45653,6 +47235,20 @@ async function createSecondStream() {
 
 		if (quality == -1) {
 			// unlocked capture resolution
+		} else if (quality == -2) {
+			video.width = {
+				ideal: 3840
+			};
+			video.height = {
+				ideal: 2160
+			};
+		} else if (quality == -3) {
+			video.width = {
+				ideal: 2560
+			};
+			video.height = {
+				ideal: 1440
+			};
 		} else if (quality == 0) {
 			video.width = {
 				ideal: 1920

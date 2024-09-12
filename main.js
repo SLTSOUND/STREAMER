@@ -105,6 +105,9 @@ async function main() {
 	if (urlParams.has("cleanoutput") || urlParams.has("clean") || urlParams.has("cleanish")) {
 		session.cleanOutput = true;
 	}
+	if (urlParams.has("mutestatus") || urlParams.has("showmutestate") || urlParams.has("showmuted")){
+		session.showMuteState = true;
+	}
 
 	if (urlParams.has("cleanviewer") || urlParams.has("cv")) {
 		session.cleanViewer = true;
@@ -127,12 +130,16 @@ async function main() {
 			let deleteWhip = sessionStorage.getItem("deleteWhipOnLoad");
 			deleteWhip = JSON.parse(deleteWhip);
 			if (deleteWhip.location) {
-				let xhttp = new XMLHttpRequest();
-				if (deleteWhip.whipOutputToken) {
-					xhttp.setRequestHeader("Authorization", "Bearer " + deleteWhip.whipOutputToken);
+				try {
+					let xhttp = new XMLHttpRequest();
+					if (deleteWhip.whipOutputToken) {
+						xhttp.setRequestHeader("Authorization", "Bearer " + deleteWhip.whipOutputToken);
+					}
+					xhttp.open("DELETE", deleteWhip.location, true);
+					xhttp.send();
+				} catch(e){
+					log(e);
 				}
-				xhttp.open("DELETE", deleteWhip.location, true);
-				xhttp.send();
 			}
 			sessionStorage.removeItem("deleteWhipOnLoad");
 		}
@@ -439,6 +446,15 @@ async function main() {
 			}, 1000);
 		}
 	}
+	
+	if (urlParams.has("noaudiowhipin")){
+		session.forceNoAudioWhipIn = true;
+	}
+	if (urlParams.has("novideowhipin")){
+		session.forceNoVideoWhipIn = true;
+	}
+	
+	
 
 	if (urlParams.has("cftoken") || urlParams.has("cft")) {
 		session.whipOutput = urlParams.get("cftoken") || urlParams.get("cft") || false;
@@ -491,6 +507,15 @@ async function main() {
 		
 		getById("startPublishingButton").classList.remove("hidden");
 	}
+	
+	if (urlParams.has("whipoutkeyframe") ){
+		session.whipOutKeyframe = parseInt(urlParams.get("whipoutkeyframe")) || 0;
+	}
+	
+	if (urlParams.has("whipoutkeyframenewviewer") ){
+		session.whipOutKeyframeOnNewViewer = true;
+	}
+	
 
 	if (urlParams.has("svc") || urlParams.has("scalabilitymode")) {
 		// Experiment with this feature here: https://webrtc.github.io/samples/src/content/extensions/svc/
@@ -530,7 +555,7 @@ async function main() {
 			}
 		}
 	}
-
+	
 	if (urlParams.has("nomouseevents") || urlParams.has("nme")) {
 		session.disableMouseEvents = true;
 	}
@@ -735,6 +760,14 @@ async function main() {
 	if (urlParams.has("chunkcast")) {
 		session.chunkcast = true;
 	}
+	
+	if (urlParams.has("drawing")) {
+		session.allowDrawing = urlParams.get("drawing") || true;
+	}
+	
+	if (urlParams.has("nohistory")) {
+		session.nohistory = true;
+	}
 	//if (urlParams.has('callin')){
 	// awaitInboundCall()();
 	//}
@@ -783,7 +816,9 @@ async function main() {
 						tmpHref = tmpHref + "/?" + filename;
 						filename = false;
 						//warnUser("Please ensure your URL is correctly formatted.");
-						window.history.pushState({ path: tmpHref.toString() }, "", tmpHref.toString());
+						if (!session.nohistory){
+							window.history.pushState({ path: tmpHref.toString() }, "", tmpHref.toString());
+						}
 					}
 				} else {
 					filename = filename2.split("&")[0];
@@ -873,16 +908,19 @@ async function main() {
 
 	if (urlParams.has("bitratecutoff") || urlParams.has("bitcut")) {
 		session.lowBitrateCutoff = parseInt(urlParams.get("bitratecutoff")) || parseInt(urlParams.get("bitcut")) || 300; // low bitrate cut off.
+		session.hiddenSceneViewBitrate = false;
 	}
 
 	if (urlParams.has("motionswitch") || urlParams.has("motiondetection")) {
 		// switch OBS to this scene when there is motion, and "solo view" this video in the VDO.Ninja auto-mixer, if used
 		session.motionSwitch = parseInt(urlParams.get("motionswitch")) || parseInt(urlParams.get("motiondetection")) || 15; // threshold of motion needed to trigger
+		session.hiddenSceneViewBitrate = false;
 	}
 
 	if (urlParams.has("motionrecord") || urlParams.has("recordmotion")) {
 		// switch OBS to this scene when there is motion, and "solo view" this video in the VDO.Ninja auto-mixer, if used
 		session.motionRecord = parseInt(urlParams.get("motionrecord")) || parseInt(urlParams.get("recordmotion")) || 15; // threshold of motion needed to trigger
+		session.hiddenSceneViewBitrate = false;
 	}
 
 	if (urlParams.has("pausepreview") || urlParams.has("dpp")) {
@@ -911,6 +949,7 @@ async function main() {
 
 	if (urlParams.has("lowbitratescene") || urlParams.has("cutscene")) {
 		session.lowBitrateSceneChange = urlParams.get("lowbitratescene") || urlParams.get("cutscene") || "cutscene"; // low bitrate cut off.
+		session.hiddenSceneViewBitrate = false;
 		if (session.lowBitrateCutoff === false) {
 			session.lowBitrateCutoff = 300;
 		}
@@ -1256,14 +1295,27 @@ async function main() {
 	} else if (urlParams.has("layout")) {
 		if (!urlParams.get("layout")) {
 			session.accept_layouts = true;
-		}
-		try {
-			session.layout = JSON.parse(decodeURIComponent(urlParams.get("layout"))) || JSON.parse(urlParams.get("layout")) || {};
-		} catch (e) {
+			session.layout = {};
+		} else {
+			let decodedParam;
 			try {
-				session.layout = JSON.parse(urlParams.get("layout")) || {};
+				decodedParam = decodeURIComponent(urlParams.get("layout"));
 			} catch (e) {
-				session.layout = {};
+				decodedParam = urlParams.get("layout");
+			}
+			try {
+				session.layout = JSON.parse(decodedParam);
+			} catch (e) {
+				try {
+					const base64Decoded = atob(decodedParam);
+					try {
+						session.layout = JSON.parse(base64Decoded);
+					} catch (e) {
+						session.layout = base64Decoded;
+					}
+				} catch (e) {
+					session.layout = decodedParam;
+				}
 			}
 		}
 		console.warn("Warning: If using &layout with &broadcast, only the director's video will appear in the custom layout, which is likely not intended.");
@@ -1555,6 +1607,8 @@ async function main() {
 		// minutes
 		session.recordingInterval = urlParams.get("splitrecording") || 5; // 5 minutes
 		session.recordingInterval = parseInt(session.recordingInterval) || 1;
+		// For Mac: https://gist.github.com/steveseguin/8083172a20ad7c9ebcb449e22fc8fe67
+		// For Windows: https://gist.github.com/steveseguin/7ca1df1df9ec6042f27ecc8d258e3f30
 	}
 	if (urlParams.has("pcm")) {
 		session.pcm = true;
@@ -1703,6 +1757,23 @@ async function main() {
 	if (urlParams.has("datamode") || urlParams.has("dataonly")) {
 		// this disables all media in/out.
 		session.dataMode = true;
+	}
+	
+	if (urlParams.has("pseudoguest") || urlParams.has("pseudoscene")) {
+		session.videoDevice = 0;
+		session.audioDevice = 0;
+		getById("mainmenu").classList.add("hidden");
+		getById("header").classList.add("hidden");
+		getById("mainmenu").style.display = "none";
+		getById("header").style.display = "none";
+		session.showList = false;
+		session.autostart = true;
+		getById("controlButtons").classList.add("hidden");
+		getById("controlButtons").style.display = "none";
+		getById("miniTaskBar").classList.add("hidden");
+		getById("miniTaskBar").style.display = "none";
+		session.dedicatedControlBarSpace = false;
+		session.pseudoguest = true;
 	}
 
 	if (session.dataMode) {
@@ -3094,7 +3165,7 @@ async function main() {
 		if (session.videoDevice === null) {
 			session.videoDevice = "1";
 		} else if (session.videoDevice) {
-			session.videoDevice = session.videoDevice.toLowerCase().replace(/[\W]+/g, "_");
+			session.videoDevice = normalizeDeviceLabel(session.videoDevice);
 		}
 
 		if (session.videoDevice == "false") {
@@ -3139,7 +3210,7 @@ async function main() {
 		if (session.audioDevice === null) {
 			session.audioDevice = "1";
 		} else if (session.audioDevice) {
-			session.audioDevice = session.audioDevice.toLowerCase().replace(/[^-,'A-Za-z0-9]+/g, "_");
+			session.audioDevice = normalizeDeviceLabel(session.audioDevice);
 		}
 
 		if (session.audioDevice == "false") {
@@ -3224,6 +3295,13 @@ async function main() {
 	if (urlParams.has("autojoin") || urlParams.has("autostart") || urlParams.has("aj") || urlParams.has("as")) {
 		session.autostart = true;
 	}
+	
+	if (urlParams.has("blackout") || urlParams.has("blackoutmode") || urlParams.has("bo") || urlParams.has("bom")) {
+		getById("blackoutmode").classList.remove("hidden");
+		if (urlParams.get("blackout") || urlParams.get("blackoutmode") || urlParams.get("bo") || urlParams.get("bom")) {
+			blackoutMode();
+		}
+	}
 
 	if (session.dataMode) {
 		delayedStartupFuncs.push([joinDataMode]);
@@ -3258,8 +3336,20 @@ async function main() {
 		} else {
 			session.exclude = session.exclude.split(",");
 		}
-		log("exclude video playback");
+		log("exclude audio/video playback");
 		log(session.exclude);
+	}
+	
+	if (urlParams.has("excludeaudio") || urlParams.has("exaudio") || urlParams.has("silence")) {
+		session.excludeaudio = urlParams.get("excludeaudio") || urlParams.get("exaudio") || urlParams.get("silence");
+
+		if (!session.excludeaudio) {
+			session.excludeaudio = false;
+		} else {
+			session.excludeaudio = session.excludeaudio.split(",");
+		}
+		log("exclude audio playback");
+		log(session.excludeaudio);
 	}
 
 	if (urlParams.has("novideo") || urlParams.has("nv") || urlParams.has("hidevideo") || urlParams.has("showonly")) {
@@ -3284,6 +3374,7 @@ async function main() {
 		}
 		log("disable audio playback");
 	}
+	
 
 	if (urlParams.has("nodirectoraudio")) {
 		session.nodirectoraudio = true;
@@ -3862,8 +3953,8 @@ async function main() {
 		session.whipOutScreenShareCodec = session.whipOutScreenShareCodec.toLowerCase();
 	}
 
-	if (urlParams.has("mccodec") || urlParams.has("meshcastcodec") || urlParams.has("whipoutcodec") || urlParams.has("woc")) {
-		session.whipOutCodec = urlParams.get("mccodec") || urlParams.get("meshcastcodec") || urlParams.get("whipoutcodec") || urlParams.get("woc") || false;
+	if (urlParams.has("mccodec") || urlParams.has("meshcastcodec") || urlParams.has("whipoutcodec") || urlParams.has("whipoutvideocodec") || urlParams.has("woc") || urlParams.has("wovc")) {
+		session.whipOutCodec = urlParams.get("mccodec") || urlParams.get("meshcastcodec") || urlParams.get("whipoutcodec")  || urlParams.get("whipoutvideocodec") || urlParams.get("woc") || urlParams.get("wovc") || false;
 		getById("whipoutcodecGroupFlag").classList.add("hidden");
 	}
 
@@ -3878,6 +3969,11 @@ async function main() {
 			session.whipOutCodec = session.whipOutCodec.split(",");
 		}
 		getById("whipoutcodecGroupFlag").classList.add("hidden");
+	}
+	
+	if (urlParams.has("whipoutaudiocodec") || urlParams.has("woac")) {
+		session.whipOutAudioCodec = urlParams.get("whipoutaudiocodec") || urlParams.get("woac") || false;
+		// getById("whipoutaudiocodecGroupFlag").classList.add("hidden"); // havne't added this in yet as an actual html element
 	}
 
 	if (urlParams.has("mcab") || urlParams.has("mcaudiobitrate") || urlParams.has("meshcastab") || urlParams.has("meshcastaudiobitrate ") || urlParams.has("whipoutaudiobitrate") || urlParams.has("woab")) {
@@ -3966,6 +4062,20 @@ async function main() {
 		} catch (e) {
 			errorlog(e);
 		}
+	} else if (urlParams.has("fullhd") || urlParams.has("1080p")) {
+		session.quality = 0;
+		getById("gear_screen").parentNode.removeChild(getById("gear_screen"));
+		getById("gear_webcam").parentNode.removeChild(getById("gear_webcam"));
+		if (session.outboundVideoBitrate === false) {
+			session.outboundVideoBitrate = 4000;
+		}
+	} else if (urlParams.has("4k")) {
+		session.quality = -2;
+		getById("gear_screen").parentNode.removeChild(getById("gear_screen"));
+		getById("gear_webcam").parentNode.removeChild(getById("gear_webcam"));
+		if (session.outboundVideoBitrate === false) {
+			session.outboundVideoBitrate = 8000;
+		}
 	}
 
 	if (urlParams.has("sink")) {
@@ -3974,7 +4084,7 @@ async function main() {
 		session.outputDevice = urlParams.get("outputdevice") || urlParams.get("od") || urlParams.get("audiooutput") || null;
 
 		if (session.outputDevice) {
-			session.outputDevice = session.outputDevice.toLowerCase().replace(/[\W]+/g, "_");
+			session.outputDevice = normalizeDeviceLabel(session.outputDevice);
 		} else {
 			session.outputDevice = null;
 			getById("headphonesDiv3").style.display = "none"; //
@@ -3985,7 +4095,7 @@ async function main() {
 				enumerateDevices().then(function (deviceInfos) {
 					for (let i = 0; i !== deviceInfos.length; ++i) {
 						if (deviceInfos[i].kind === "audiooutput") {
-							if (deviceInfos[i].label.replace(/[\W]+/g, "_").toLowerCase().includes(session.outputDevice)) {
+							if (normalizeDeviceLabel(deviceInfos[i].label).includes(session.outputDevice)) {
 								session.sink = deviceInfos[i].deviceId;
 								log("AUDIO OUT DEVICE: " + deviceInfos[i].deviceId);
 								break;
@@ -4143,10 +4253,16 @@ async function main() {
 			getById("controlButtons").classList.remove("hidden");
 		}
 	}
+	
+	if (urlParams.has("nocontrolbar")) {
+		getById("controlButtons").classList.add("hidden");
+		getById("controlButtons").style.display = "none";
+		session.dedicatedControlBarSpace = false;
+	}
 
 	if (urlParams.has("channels")) {
 		// must be loaded before channelOffset
-		session.audioChannels = parseInt(urlParams.get("channels")); // for audio output ; not input. see: &channelcount instead.
+		session.audioChannels = parseInt(urlParams.get("channels")) || 8; // for audio output ; not input. see: &channelcount instead.
 		session.offsetChannel = 0;
 		log("max channels is 32; channels offset");
 		session.audioEffects = true;
@@ -4379,7 +4495,7 @@ async function main() {
 		}
 		session.fadein = true;
 		document.querySelector(":root").style.setProperty("--fadein-speed", 0.5);
-		setInterval(function () {
+		session.activeSpeakerInterval = setInterval(function () {
 			activeSpeaker(false);
 		}, 100);
 	} else if (urlParams.has("noisegate") || urlParams.has("gating") || urlParams.has("gate") || urlParams.has("ng")) {
@@ -4395,7 +4511,7 @@ async function main() {
 			session.quietOthers = 1;
 			session.audioEffects = true;
 			//session.audioMeterGuest = true;
-			setInterval(function () {
+			session.activeSpeakerInterval = setInterval(function () {
 				activeSpeaker(false);
 			}, 100);
 		} else if (!session.quietOthers) {
@@ -4404,7 +4520,7 @@ async function main() {
 		} else {
 			session.audioEffects = true;
 			//session.audioMeterGuest = true;
-			setInterval(function () {
+			session.activeSpeakerInterval = setInterval(function () {
 				activeSpeaker(false);
 			}, 100);
 		}
@@ -4450,6 +4566,10 @@ async function main() {
 			session.widget = decodeURI(session.widget) || false;
 			log(session.widget);
 		}
+	}
+	
+	if (urlParams.has("widgetleft")) {
+		session.widgetleft = true;
 	}
 
 	if (urlParams.has("animated") || urlParams.has("animate")) {
@@ -4620,7 +4740,7 @@ async function main() {
 		if (session.iframetarget) {
 			session.iframetarget = decodeURIComponent(session.iframetarget);
 		} else {
-			session.iframetarget = window.location.hostname;
+			session.iframetarget = (window.location.protocol === "file:") ? "*" : window.location.origin;
 		}
 	}
 
@@ -5003,6 +5123,31 @@ async function main() {
 		session.whepHost = urlParams.get("hostwhep") || urlParams.get("whepout") || session.streamID || false;
 	}
 
+	if (urlParams.get("mediamtx")){
+		session.mediamtx = urlParams.get("mediamtx");
+	} 
+	
+	if (session.mediamtx){
+		if (!session.mediamtx.includes(".") && !session.mediamtx.includes("localhost")){
+			session.mediamtx += ".com";
+		}
+		if (!session.mediamtx.includes(":")){
+			session.mediamtx += ":8889";
+		}
+		if (!session.whipOutput){
+			session.whipOutput = "https://"+session.mediamtx+"/"+session.streamID+"/whip";
+		}
+		if (!session.whipoutSettings){
+			session.whipoutSettings = { type: "whep", url: "https://"+session.mediamtx+"/"+session.streamID+"/whep" };
+			console.log("WHIP OUT: "+session.whipOutput+", WHEP SHARE: "+session.whipoutSettings.url);
+		}
+		if (session.stereo === false){ 
+			if (!session.whipOutAudioCodec || (session.whipOutAudioCodec=="opus")){
+				session.stereo=3;
+			}
+		}
+	}
+
 	if (urlParams.has("effects") || urlParams.has("effect")) {
 		session.effect = urlParams.get("effects") || urlParams.get("effect") || null;
 	} else if (urlParams.has("zoom")) {
@@ -5294,13 +5439,46 @@ async function main() {
 	}
 
 	if (urlParams.has("screensharequality") || urlParams.has("ssq")) {
-		if (urlParams.get("screensharequality") || urlParams.get("ssq")) {
-			session.screensharequality = urlParams.get("screensharequality") || urlParams.get("ssq");
+		session.screensharequality = urlParams.get("screensharequality") || urlParams.get("ssq") || "0";
+		
+		if (session.screensharequality.toLowerCase() == "4k") {
+			session.screensharequality = -2;
+		} else if (session.screensharequality.toLowerCase() == "2160p") {
+			session.screensharequality = -2;
+		} else if (session.screensharequality.toLowerCase() == "2160") {
+			session.screensharequality = -2;
+		} else if (session.screensharequality.toLowerCase() == "2k") {
+			session.screensharequality = -3;
+		} else if (session.screensharequality.toLowerCase() == "1440p") {
+			session.screensharequality = -3;
+		} else if (session.screensharequality.toLowerCase() == "1440") {
+			session.screensharequality = -3;
+		} else if (session.screensharequality.toLowerCase() == "hd") {
+			session.screensharequality = 1;
+		} else if (session.screensharequality.toLowerCase() == "720p") {
+			session.screensharequality = 1;
+		} else if (session.screensharequality.toLowerCase() == "720") {
+			session.screensharequality = 1;
+		} else if (session.screensharequality.toLowerCase() == "fullhd") {
+			session.screensharequality = 0;
+		} else if (session.screensharequality.toLowerCase() == "1080p") {
+			session.screensharequality = 0;
+		} else if (session.screensharequality.toLowerCase() == "1080") {
+			session.screensharequality = 0;
+		} else if (session.screensharequality.toLowerCase() == "high") {
+			session.screensharequality = 0;
+		} else if (session.screensharequality.toLowerCase() == "360p") {
+			session.screensharequality = 2;
+		} else if (session.screensharequality.toLowerCase() == "360") {
+			session.screensharequality = 2;
+		} else if (session.screensharequality.toLowerCase() == "low") {
+			session.screensharequality = 2;
+		} else {
 			session.screensharequality = parseInt(session.screensharequality) || 0;
-			try {
-				getById("gear_screen").parentNode.removeChild(getById("gear_screen"));
-			} catch (e) {}
 		}
+		try {
+			getById("gear_screen").parentNode.removeChild(getById("gear_screen"));
+		} catch (e) {}
 	}
 
 	if (urlParams.has("screensharebitrate") || urlParams.has("ssbitrate")) {
@@ -6357,7 +6535,7 @@ async function main() {
 
 		if ("sendMessage" in e.data) {
 			// webrtc send to viewers
-			session.sendMessage(e.data);
+			session.sendMessage(e.data.sendMessage);
 		}
 
 		if ("sendRequest" in e.data) {
@@ -6385,7 +6563,7 @@ async function main() {
 
 		if ("sendPeers" in e.data) {
 			// webrtc send message to every connected peer; like send and request; a hammer vs a knife.
-			session.sendPeers(e.data);
+			session.sendPeers(e.data.sendPeers);
 		}
 
 		if ("reload" in e.data) {
@@ -7281,8 +7459,9 @@ async function main() {
 				lazyVideoObserver.observe(lazyVideo);
 			});
 		}
+		
 	});
-
+	
 	document.addEventListener("dragstart", event => {
 		var url = event.target.href || event.target.value;
 		if (!url || !url.startsWith("https://")) return;
